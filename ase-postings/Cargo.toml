@@ -1,0 +1,13 @@
+[package]
+name = "ase-postings"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ase-core = { path = "../ase-core" }
+ase-index = { path = "../ase-index" }
+ase-ingest = { path = "../ase-ingest" }
+rusqlite = { version = "0.43", default-features = false, features = ["bundled"] }
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }

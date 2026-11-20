@@ -1,0 +1,16 @@
+[package]
+name = "ase-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "ase"
+path = "src/main.rs"
+
+[dependencies]
+ase-core = { path = "../ase-core" }
+ase-index = { path = "../ase-index" }
+ase-postings = { path = "../ase-postings" }
+ase-ingest = { path = "../ase-ingest" }
+serde_json = { version = "1", features = ["raw_value"] }
+zstd = "0.14"

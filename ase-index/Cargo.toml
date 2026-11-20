@@ -1,0 +1,11 @@
+[package]
+name = "ase-index"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ase-core = { path = "../ase-core" }
+ase-ingest = { path = "../ase-ingest" }
+rayon = "1"
+sha2 = "0.10"
+zstd = "0.14"
