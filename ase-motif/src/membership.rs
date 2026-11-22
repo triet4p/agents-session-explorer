@@ -376,10 +376,14 @@ impl AttemptMembership {
     }
 }
 
-/// Dispatch-only membership for one task token.
+/// Dispatch-only membership for one task token or one explicit
+/// `(project, task)` key.
 #[derive(Clone, Debug)]
 pub struct TaskMembership {
     pub token: String,
+    /// Explicit project scope when the caller addressed `project|task`;
+    /// derived from the assigned key otherwise.
+    pub project: Option<String>,
     pub status: Status,
     pub task_key: Option<String>,
     pub attempts: Vec<AttemptMembership>,
@@ -387,19 +391,44 @@ pub struct TaskMembership {
     pub explain: Vec<String>,
 }
 
-/// Reconcile one token from native dispatch records only.
+/// Reconcile one bare token from native dispatch records only.
 ///
 /// The reconciliation receives no naming, marker, path or delegation input, so
 /// no other layer can contribute a project scope. An `ambiguous` or
 /// `unresolved` outcome yields no attempts, and the record-level issues stay
 /// attached to the result instead of being silently dropped.
 pub fn membership(idx: &Index, store: &dyn RawStore, token: &str) -> Result<TaskMembership> {
+    membership_scoped(idx, store, token, None)
+}
+
+/// Reconcile one token inside an explicit project scope.
+///
+/// `project` is applied before reconciliation, through the same
+/// `ase_task::resolve` dispatch validator used by an unscoped query. It is not
+/// a post-hoc candidate selector: an out-of-scope or unknown project yields
+/// `unresolved`, and an ambiguous in-scope result still yields no attempts.
+/// There is no fallback to the bare token. Distinct projects that share a task
+/// token therefore stay two independent samples.
+pub fn membership_scoped(
+    idx: &Index,
+    store: &dyn RawStore,
+    token: &str,
+    project: Option<&str>,
+) -> Result<TaskMembership> {
     if token.trim().is_empty() {
         return Err(err("membership needs a non-empty task token"));
+    }
+    if let Some(project) = project {
+        if !valid_dispatch_identity(project) {
+            return Err(err(format!(
+                "membership project scope {project} violates the producer identity grammar"
+            )));
+        }
     }
     let dispatch = dispatch_input(idx, store)?;
     let resolution = ase_task::resolve(&ase_task::Input {
         token: token.to_string(),
+        project: project.map(str::to_string),
         naming: Vec::new(),
         markers: Vec::new(),
         delegations: Vec::new(),
@@ -423,7 +452,7 @@ pub fn membership(idx: &Index, store: &dyn RawStore, token: &str) -> Result<Task
             let Evidence::Dispatch(join) = evidence else {
                 continue;
             };
-            if join.task != token {
+            if join.task != token || project.is_some_and(|scope| join.project != scope) {
                 continue;
             }
             attempts.push(AttemptMembership {
@@ -447,8 +476,16 @@ pub fn membership(idx: &Index, store: &dyn RawStore, token: &str) -> Result<Task
         });
     }
 
+    let resolved_project = project.map(str::to_string).or_else(|| {
+        resolution
+            .task_key
+            .as_deref()
+            .and_then(|key| key.split_once('|'))
+            .map(|(project, _)| project.to_string())
+    });
     Ok(TaskMembership {
         token: token.to_string(),
+        project: resolved_project,
         status: resolution.status,
         task_key: resolution.task_key,
         attempts,

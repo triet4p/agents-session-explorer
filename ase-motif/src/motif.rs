@@ -32,6 +32,14 @@ use crate::projection::{reopen_call, CallEvidence, Sequence, TaskSequences};
 pub const MOTIF_RULE_NAME: &str = "motif-alignment";
 pub const MOTIF_RULE_VERSION: &str = "motif-align-v1";
 
+/// Identifier of the duplicate-text rule recorded on a report.
+///
+/// The text unit is one projected CallSig sequence. Its `text_hash` is the
+/// SHA-256 of the reopened signature strings in order, so it is reproducible
+/// from raw bytes and never hashes stored prose or a session identifier.
+pub const TEXT_HASH_RULE_NAME: &str = "motif-sequence-text";
+pub const TEXT_HASH_RULE_VERSION: &str = "seq-text-v1";
+
 /// Fixed default seed for the permutation null model. Recorded on every run.
 pub const NULL_SEED: u64 = 0x9E37_79B9_7F4A_7C15;
 
@@ -129,6 +137,26 @@ pub struct Column {
     pub missing: u32,
 }
 
+/// Stable identity of one projected sequence inside a report.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SequenceRef {
+    pub task: String,
+    pub attempt: String,
+    pub dispatch_id: String,
+    pub sequence: u32,
+}
+
+/// A duplicate sequence copy retained as evidence but excluded from counting.
+#[derive(Clone, Debug)]
+pub struct DeduplicatedSequence {
+    pub task: String,
+    pub attempt: String,
+    pub dispatch_id: String,
+    pub sequence: u32,
+    pub text_hash: String,
+    pub duplicate_of: SequenceRef,
+}
+
 /// One concrete embedding of the motif in a sequence.
 #[derive(Clone, Debug)]
 pub struct Occurrence {
@@ -136,6 +164,11 @@ pub struct Occurrence {
     pub attempt: String,
     pub dispatch_id: String,
     pub sequence: u32,
+    /// SHA-256 of this sequence's reopened signatures (see
+    /// [`TEXT_HASH_RULE_NAME`]).
+    pub text_hash: String,
+    /// Set when another sequence of the same task has the same text hash.
+    pub duplicate_of: Option<SequenceRef>,
     /// Number of calls skipped between the first and last motif column.
     pub gap: u32,
     pub calls: Vec<OccurrenceCall>,
@@ -179,8 +212,12 @@ pub struct Denominator {
     pub tasks_total: u32,
     pub tasks_in_family: u32,
     pub tasks_with_occurrence: u32,
+    /// Distinct `(task key, text_hash)` sequence units in the family.
     pub sequences_in_family: u32,
+    /// Distinct units that contain the motif.
     pub sequences_with_occurrence: u32,
+    /// Duplicate copies in the family: retained as occurrences, not counted.
+    pub sequences_deduplicated: u32,
     pub excluded: Vec<DenominatorExclusion>,
 }
 
@@ -243,7 +280,12 @@ pub struct MotifReport {
     pub rule_version: &'static str,
     pub config: MotifConfig,
     pub tasks: u32,
+    /// Distinct `(task key, text_hash)` sequence units.
     pub sequences: u32,
+    /// Raw projected sequences before duplicate-text dedupe.
+    pub sequences_raw: u32,
+    /// Duplicate copies retained as evidence but excluded from counting.
+    pub deduplicated_sequences: Vec<DeduplicatedSequence>,
     pub families: usize,
     pub families_below_min_tasks: usize,
     pub excluded_tasks: Vec<TaskExclusion>,
@@ -256,10 +298,13 @@ struct Obs<'a> {
     dispatch_id: String,
     sequence: &'a Sequence,
     signatures: Vec<String>,
+    text_hash: String,
+    duplicate_of: Option<SequenceRef>,
 }
 
 struct Collected<'a> {
     observations: Vec<Obs<'a>>,
+    deduplicated: Vec<DeduplicatedSequence>,
     tasks: BTreeSet<String>,
     exclusions: Vec<TaskExclusion>,
 }
@@ -316,11 +361,39 @@ fn collect<'a>(
         .collect();
 
     let mut observations = Vec::new();
+    let mut deduplicated = Vec::new();
+    // Dedupe key includes the resolved task key, so identical text in two
+    // distinct tasks stays two independent observations. Sequence projection
+    // has already bounded every sequence to one branch and one session, so
+    // this map never merges across those boundaries.
+    let mut canonical: BTreeMap<(String, String), SequenceRef> = BTreeMap::new();
     for (task, entries) in per_task {
         for (attempt, sequence) in entries {
             let mut signatures = Vec::with_capacity(sequence.calls.len());
             for call in &sequence.calls {
                 signatures.push(reopen_call(published, idx, store, call)?);
+            }
+            let text_hash = sequence_text_hash(&signatures);
+            let reference = SequenceRef {
+                task: task.clone(),
+                attempt: attempt.attempt.clone(),
+                dispatch_id: attempt.dispatch_id.clone(),
+                sequence: sequence.index as u32,
+            };
+            let duplicate_of = canonical
+                .get(&(task.clone(), text_hash.clone()))
+                .cloned();
+            if duplicate_of.is_none() {
+                canonical.insert((task.clone(), text_hash.clone()), reference.clone());
+            } else {
+                deduplicated.push(DeduplicatedSequence {
+                    task: task.clone(),
+                    attempt: attempt.attempt.clone(),
+                    dispatch_id: attempt.dispatch_id.clone(),
+                    sequence: sequence.index as u32,
+                    text_hash: text_hash.clone(),
+                    duplicate_of: duplicate_of.clone().expect("checked above"),
+                });
             }
             observations.push(Obs {
                 task: task.clone(),
@@ -328,12 +401,15 @@ fn collect<'a>(
                 dispatch_id: attempt.dispatch_id.clone(),
                 sequence,
                 signatures,
+                text_hash,
+                duplicate_of,
             });
         }
     }
 
     Ok(Collected {
         observations,
+        deduplicated,
         tasks: all_tasks,
         exclusions,
     })
@@ -410,6 +486,26 @@ fn seed_for(signatures: &[String], base: u64) -> u64 {
     base ^ hash
 }
 
+/// Strong digest of the reopened CallSig text of one sequence.
+///
+/// The version prefix makes the rule explicit in the value itself; call
+/// signatures are already a normalized, argument-free projection, so the hash
+/// is reproducible from raw bytes through the same selector reopen path.
+fn sequence_text_hash(signatures: &[String]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(TEXT_HASH_RULE_VERSION.as_bytes());
+    for signature in signatures {
+        hasher.update(b"\n");
+        hasher.update(signature.as_bytes());
+    }
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(64);
+    for byte in digest {
+        hex.push_str(&format!("{byte:02x}"));
+    }
+    hex
+}
+
 fn motif_id(signatures: &[String]) -> String {
     let mut hasher = Sha256::new();
     for signature in signatures {
@@ -462,6 +558,8 @@ pub fn detect(
     config.validate()?;
     let collected = collect(published, idx, store, tasks)?;
     let observations = collected.observations;
+    let sequences_raw = observations.len() as u32;
+    let sequences_distinct = sequences_raw - collected.deduplicated.len() as u32;
     let sequences: Vec<&Sequence> = observations.iter().map(|obs| obs.sequence).collect();
     let family_report = families(&sequences, &config.family)?;
 
@@ -482,9 +580,18 @@ pub fn detect(
             continue;
         }
 
+        // The lowest index is always a canonical copy: a duplicate is only
+        // recorded after its canonical sequence in `collect`.
         let reference = family.members[0];
+        debug_assert!(observations[reference].duplicate_of.is_none());
         let reference_obs = &observations[reference];
         let signatures = reference_obs.signatures.clone();
+        let sequences_deduplicated = family
+            .members
+            .iter()
+            .filter(|index| observations[**index].duplicate_of.is_some())
+            .count() as u32;
+        let sequences_in_family = family.members.len() as u32 - sequences_deduplicated;
         let mut columns: Vec<Column> = signatures
             .iter()
             .enumerate()
@@ -503,6 +610,9 @@ pub fn detect(
         let mut sequence_exclusions = Vec::new();
         for index in &family.members {
             let obs = &observations[*index];
+            if obs.duplicate_of.is_some() {
+                continue;
+            }
             match align(&signatures, &obs.signatures, &align_config) {
                 Ok(alignment) => {
                     for op in &alignment.ops {
@@ -544,7 +654,9 @@ pub fn detect(
             let obs = &observations[*index];
             match gap_embedding(&signatures, &obs.signatures) {
                 Some((matched, gap)) => {
-                    sequences_with_occurrence += 1;
+                    if obs.duplicate_of.is_none() {
+                        sequences_with_occurrence += 1;
+                    }
                     task_gap
                         .entry(obs.task.as_str())
                         .and_modify(|current| *current = (*current).min(gap))
@@ -564,6 +676,8 @@ pub fn detect(
                             attempt: obs.attempt.clone(),
                             dispatch_id: obs.dispatch_id.clone(),
                             sequence: *index as u32,
+                            text_hash: obs.text_hash.clone(),
+                            duplicate_of: obs.duplicate_of.clone(),
                             gap,
                             calls,
                         });
@@ -613,6 +727,9 @@ pub fn detect(
                 let mut permuted_tasks: BTreeSet<&str> = BTreeSet::new();
                 for index in &family.members {
                     let obs = &observations[*index];
+                    if obs.duplicate_of.is_some() {
+                        continue;
+                    }
                     shuffled.clear();
                     shuffled.extend(obs.signatures.iter().cloned());
                     fisher_yates(&mut shuffled, &mut rng);
@@ -678,8 +795,9 @@ pub fn detect(
                 tasks_total: collected.tasks.len() as u32,
                 tasks_in_family: family_tasks.len() as u32,
                 tasks_with_occurrence: task_gap.len() as u32,
-                sequences_in_family: family.members.len() as u32,
+                sequences_in_family,
                 sequences_with_occurrence,
+                sequences_deduplicated,
                 excluded,
             },
             occurrences,
@@ -703,7 +821,9 @@ pub fn detect(
         rule_version: MOTIF_RULE_VERSION,
         config: *config,
         tasks: collected.tasks.len() as u32,
-        sequences: observations.len() as u32,
+        sequences: sequences_distinct,
+        sequences_raw,
+        deduplicated_sequences: collected.deduplicated,
         families: family_report.families.len(),
         families_below_min_tasks: below_min_tasks,
         excluded_tasks: collected.exclusions,

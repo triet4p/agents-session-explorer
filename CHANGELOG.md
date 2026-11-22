@@ -10,6 +10,12 @@
 ### Changed
 
 - Changed `ase-motif` from a library-only step to a CLI-visible motif layer; `ase motif` renders alignment, task-deduplicated support, denominator/exclusions and the null model, and no path calls a model.
+- Changed `ase motif` cohort addressing: `PROJECT|TASK` addresses one locked `(project, task)` sampling key through the same dispatch validator, so a task token shared by two projects stays two independent samples; a bare token remains ambiguous and is never resolved by fallback.
+- Changed motif counting to dedupe duplicate sequence text before statistics under rule `motif-sequence-text` / `seq-text-v1`. The `text_hash` is the SHA-256 of a sequence's reopened CallSig strings, deduped only within one resolved task key; duplicate copies are reported in `deduplicated_sequences`, excluded from family/null/sequence-denominator counting, and every occurrence remains reopenable evidence.
+
+### Fixed
+
+- Fixed the P0d-2 handoff gaps from the Sprint 2 differential review: cross-project task-token collisions are addressable without an alternate validator or ambiguous fallback, and the design §10.3 `text_hash` dedupe is implemented before counting instead of being waived.
 
 ## [0.2.0] - TBD
 

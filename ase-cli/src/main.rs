@@ -100,9 +100,11 @@ fn usage() {
          ase fixture-markers --out DIR\n\
          ase fixture-resolve --out DIR\n\
          ase fixture-dispatch --out DIR\n\
-         ase motif  TOKEN... [--tau F] [--k-min N] [--k-max N] [--max-gap N]\n\
-                     [--band N] [--max-substitutions N] [--null-permutations N]\n\
-                     [--min-tasks N] [--explain] [--json]\n\
+         ase motif  [PROJECT|TASK|TOKEN]... [--tau F] [--k-min N] [--k-max N]\n\
+                     [--max-gap N] [--band N] [--max-substitutions N]\n\
+                     [--null-permutations N] [--min-tasks N] [--explain] [--json]\n\
+                     (PROJECT|TASK addresses one exact sampling key; a bare\n\
+                     TOKEN stays ambiguous when two projects share it)\n\
          ase fixture-motif --out DIR\n\
          ase fixture-p0b --out DIR"
     );
@@ -1299,6 +1301,7 @@ fn cmd_resolve_task(
     let marker_count = markers.iter().filter(|marker| marker.value == token).count();
     let resolution = ase_task::resolve(&ase_task::Input {
         token: token.to_string(),
+        project: None,
         naming,
         markers,
         delegations,
@@ -3003,20 +3006,59 @@ fn parse_opt<T: std::str::FromStr>(args: &[String], name: &str) -> Result<Option
     }
 }
 
+struct MotifTarget {
+    address: String,
+    project: Option<String>,
+    token: String,
+}
+
+/// Parse one motif address. `PROJECT|TASK` is the locked `(project, task)`
+/// sampling key; a bare token keeps the unscoped contract and stays ambiguous
+/// when two projects share it. No fallback rewrites one form into the other.
+fn motif_target(address: &str) -> Result<MotifTarget> {
+    match address.split_once('|') {
+        Some((project, task)) => {
+            if project.is_empty() || task.is_empty() || task.contains('|') {
+                return Err(err(format!(
+                    "motif address {address} must be PROJECT|TASK with non-empty parts"
+                )));
+            }
+            Ok(MotifTarget {
+                address: address.to_string(),
+                project: Some(project.to_string()),
+                token: task.to_string(),
+            })
+        }
+        None => Ok(MotifTarget {
+            address: address.to_string(),
+            project: None,
+            token: address.to_string(),
+        }),
+    }
+}
+
 fn cmd_motif(args: &[String]) -> Result<()> {
-    let tokens = positionals(args);
-    if tokens.is_empty() {
+    let positionals = positionals(args);
+    if positionals.is_empty() {
         return Err(err("motif needs at least one task token"));
     }
+    let targets = positionals
+        .iter()
+        .map(|address| motif_target(address))
+        .collect::<Result<Vec<MotifTarget>>>()?;
     let (idx, store, published) = require_publication(args)?;
 
-    let mut tasks = Vec::with_capacity(tokens.len());
-    let mut task_rows = Vec::with_capacity(tokens.len());
-    for token in &tokens {
-        let member = ase_motif::membership(&idx, &store, token)?;
+    let mut tasks = Vec::with_capacity(targets.len());
+    let mut task_rows = Vec::with_capacity(targets.len());
+    for target in &targets {
+        let member =
+            ase_motif::membership_scoped(&idx, &store, &target.token, target.project.as_deref())?;
         let projected = ase_motif::project(&published, &idx, &member)?;
         task_rows.push(json!({
-            "token": token,
+            "address": &target.address,
+            "addressing": if target.project.is_some() { "project_task" } else { "token" },
+            "token": &target.token,
+            "project": &member.project,
             "status": member.status.label(),
             "task_key": &member.task_key,
             "attempts": member.attempts.iter().map(|attempt| json!({
@@ -3092,7 +3134,7 @@ fn cmd_motif(args: &[String]) -> Result<()> {
                     "exact": motif.support_exact,
                     "relaxed": &motif.support_relaxed,
                     "gap_max": config.max_gap,
-                    "rule": "distinct task keys; a task counts once no matter how many attempts or occurrences contain the motif"
+                    "rule": "distinct task keys; a task counts once no matter how many attempts or occurrences contain the motif; duplicate sequence text inside one task is counted once"
                 },
                 "null": {
                     "permutations": null_model.permutations,
@@ -3102,7 +3144,7 @@ fn cmd_motif(args: &[String]) -> Result<()> {
                     "stddev": null_model.stddev,
                     "z": null_model.z,
                     "lift": null_model.lift,
-                    "rule": "fixed-seed SplitMix64 permutation of each sequence's call order; exact support recounted per task"
+                    "rule": "fixed-seed SplitMix64 permutation of each distinct sequence unit's call order; duplicate sequence text is not permuted twice; exact support recounted per task"
                 },
                 "denominator": {
                     "tasks_total": motif.denominator.tasks_total,
@@ -3110,6 +3152,7 @@ fn cmd_motif(args: &[String]) -> Result<()> {
                     "tasks_with_occurrence": motif.denominator.tasks_with_occurrence,
                     "sequences_in_family": motif.denominator.sequences_in_family,
                     "sequences_with_occurrence": motif.denominator.sequences_with_occurrence,
+                    "sequences_deduplicated": motif.denominator.sequences_deduplicated,
                     "excluded": motif.denominator.excluded.iter().map(|exclusion| json!({
                         "task": &exclusion.task,
                         "reason": &exclusion.reason
@@ -3120,6 +3163,14 @@ fn cmd_motif(args: &[String]) -> Result<()> {
                     "attempt": &occurrence.attempt,
                     "dispatch_id": &occurrence.dispatch_id,
                     "sequence": occurrence.sequence,
+                    "text_hash": &occurrence.text_hash,
+                    "text_duplicate": occurrence.duplicate_of.is_some(),
+                    "duplicate_of": occurrence.duplicate_of.as_ref().map(|reference| json!({
+                        "task": &reference.task,
+                        "attempt": &reference.attempt,
+                        "dispatch_id": &reference.dispatch_id,
+                        "sequence": reference.sequence
+                    })),
                     "gap": occurrence.gap,
                     "calls": occurrence.calls.iter().map(|call| json!({
                         "position": call.position,
@@ -3157,8 +3208,9 @@ fn cmd_motif(args: &[String]) -> Result<()> {
         .collect();
 
     let explain = vec![
-        "Membership is one native dispatch join per attempt; naming, path and parentSession candidates are never inputs.".to_string(),
+        "Membership is one native dispatch join per attempt; naming, path and parentSession candidates are never inputs. `PROJECT|TASK` filters the same dispatch validator before reconciliation, so one token in two projects stays two independent samples and a bare token stays ambiguous.".to_string(),
         "Support counts distinct task keys: repeated attempts and repeated occurrences of one task are one observation.".to_string(),
+        "Duplicate sequence text is the SHA-256 of a sequence's reopened CallSig strings (rule motif-sequence-text / seq-text-v1). Dedupe is scoped to one task key, so distinct tasks keep their own samples; duplicate whole sequences are excluded from family/null/denominator counting but every occurrence stays reopenable evidence, and calls inside a sequence are never removed or reordered.".to_string(),
         "support_relaxed[g] allows at most g skipped calls between motif columns, so raising g never lowers support.".to_string(),
         "An occurrence may carry a gap above --max-gap; it stays evidence with its gap value, while support_relaxed only counts the configured ceiling.".to_string(),
         "The null model permutes each sequence's call order with the recorded fixed seed and recounts exact per-task support; lift and z compare the observation against that expectation.".to_string(),
@@ -3174,6 +3226,12 @@ fn cmd_motif(args: &[String]) -> Result<()> {
         "config": {
             "rule": { "name": report.rule_name, "version": report.rule_version },
             "family": { "k_min": config.family.k_min, "k_max": config.family.k_max, "tau": config.family.tau },
+            "dedupe": {
+                "rule": { "name": ase_motif::TEXT_HASH_RULE_NAME, "version": ase_motif::TEXT_HASH_RULE_VERSION },
+                "unit": "one projected CallSig sequence; text_hash = SHA-256 of its reopened signatures in order",
+                "scope": "within one resolved task key (project|task); distinct tasks are never merged and no sequence crosses a branch or session boundary",
+                "effect": "duplicate copies are excluded from family, null and sequence-denominator counting; support stays per task and every occurrence remains reopenable evidence"
+            },
             "max_gap": config.max_gap,
             "band": config.band,
             "max_substitutions": config.max_substitutions,
@@ -3185,6 +3243,8 @@ fn cmd_motif(args: &[String]) -> Result<()> {
         "summary": {
             "tasks_total": report.tasks,
             "sequences": report.sequences,
+            "sequences_raw": report.sequences_raw,
+            "sequences_deduplicated": report.deduplicated_sequences.len(),
             "families": report.families,
             "families_below_min_tasks": report.families_below_min_tasks,
             "motifs": motifs.len()
@@ -3192,6 +3252,20 @@ fn cmd_motif(args: &[String]) -> Result<()> {
         "excluded_tasks": report.excluded_tasks.iter().map(|exclusion| json!({
             "task": &exclusion.task,
             "reason": exclusion.reason.label()
+        })).collect::<Vec<Value>>(),
+        "deduplicated_sequences": report.deduplicated_sequences.iter().map(|duplicate| json!({
+            "task": &duplicate.task,
+            "attempt": &duplicate.attempt,
+            "dispatch_id": &duplicate.dispatch_id,
+            "sequence": duplicate.sequence,
+            "text_hash": &duplicate.text_hash,
+            "duplicate_of": {
+                "task": &duplicate.duplicate_of.task,
+                "attempt": &duplicate.duplicate_of.attempt,
+                "dispatch_id": &duplicate.duplicate_of.dispatch_id,
+                "sequence": duplicate.duplicate_of.sequence
+            },
+            "effect": "not counted; the occurrence remains reopenable evidence"
         })).collect::<Vec<Value>>(),
         "motifs": motifs,
         "explain": if has(args, "--explain") { explain } else { Vec::<String>::new() }
@@ -3201,9 +3275,11 @@ fn cmd_motif(args: &[String]) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&v).unwrap());
     } else {
         println!(
-            "motif: {} task(s), {} sequence(s), {} family(ies), {} motif(s)",
+            "motif: {} task(s), {} distinct sequence(s) ({} raw, {} duplicate text), {} family(ies), {} motif(s)",
             report.tasks,
             report.sequences,
+            report.sequences_raw,
+            report.deduplicated_sequences.len(),
             report.families,
             report.motifs.len()
         );
@@ -3242,10 +3318,11 @@ fn cmd_motif(args: &[String]) -> Result<()> {
             );
             for occurrence in &motif.occurrences {
                 println!(
-                    "    occurrence task={} attempt={} gap={} first_event={}",
+                    "    occurrence task={} attempt={} gap={} text_duplicate={} first_event={}",
                     occurrence.task,
                     occurrence.attempt,
                     occurrence.gap,
+                    occurrence.duplicate_of.is_some(),
                     occurrence
                         .calls
                         .first()
@@ -3268,11 +3345,15 @@ const MOTIF_PARENT_SESSION: &str = "p0d2-fixture-parent";
 
 const M_A1: &str = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
 const M_A2: &str = "a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2";
+const M_A3: &str = "a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3";
 const M_B1: &str = "b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1";
 const M_C1: &str = "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1";
 const M_E1: &str = "e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1";
+const M_G1: &str = "71717171-7171-4171-8171-717171717171";
+const M_G2: &str = "72727272-7272-4272-8272-727272727272";
 
 struct MotifFixtureTask {
+    project: &'static str,
     dispatch_id: &'static str,
     task: &'static str,
     attempt: &'static str,
@@ -3280,11 +3361,16 @@ struct MotifFixtureTask {
     tools: &'static [&'static str],
 }
 
-// Synthetic only. Task 1 repeats across two attempts (one exact, one with an
-// inserted call), task 2 is gapped-only, task 3 is a near miss with one
+// Synthetic only. Task 1 repeats across three attempts: a1 is exact, a2 adds
+// one call, and a3 repeats a1's text (deduped for counting, retained as
+// evidence). Task 2 is gapped-only, task 3 is a near miss with one
 // substitution, and task 9 is a valid join whose child has no call at all.
+// Task 7 exists in two projects with the same call text so the fixture proves
+// that a colliding bare token stays ambiguous while `PROJECT|TASK` yields two
+// independent samples.
 const MOTIF_FIXTURE_TASKS: &[MotifFixtureTask] = &[
     MotifFixtureTask {
+        project: "P0D2",
         dispatch_id: M_A1,
         task: "1",
         attempt: "a1",
@@ -3292,6 +3378,7 @@ const MOTIF_FIXTURE_TASKS: &[MotifFixtureTask] = &[
         tools: &["t1", "t2", "t3", "t4"],
     },
     MotifFixtureTask {
+        project: "P0D2",
         dispatch_id: M_A2,
         task: "1",
         attempt: "a2",
@@ -3299,6 +3386,15 @@ const MOTIF_FIXTURE_TASKS: &[MotifFixtureTask] = &[
         tools: &["t1", "t2", "x1", "t3", "t4"],
     },
     MotifFixtureTask {
+        project: "P0D2",
+        dispatch_id: M_A3,
+        task: "1",
+        attempt: "a3",
+        session_id: "p0d2-child-1-a3",
+        tools: &["t1", "t2", "t3", "t4"],
+    },
+    MotifFixtureTask {
+        project: "P0D2",
         dispatch_id: M_B1,
         task: "2",
         attempt: "b1",
@@ -3306,6 +3402,7 @@ const MOTIF_FIXTURE_TASKS: &[MotifFixtureTask] = &[
         tools: &["t1", "t2", "y1", "t3", "t4"],
     },
     MotifFixtureTask {
+        project: "P0D2",
         dispatch_id: M_C1,
         task: "3",
         attempt: "c1",
@@ -3313,11 +3410,28 @@ const MOTIF_FIXTURE_TASKS: &[MotifFixtureTask] = &[
         tools: &["t1", "t2", "z1", "t4"],
     },
     MotifFixtureTask {
+        project: "P0D2",
         dispatch_id: M_E1,
         task: "9",
         attempt: "a1",
         session_id: "p0d2-child-9-a1",
         tools: &[],
+    },
+    MotifFixtureTask {
+        project: "P0D2",
+        dispatch_id: M_G1,
+        task: "7",
+        attempt: "g1",
+        session_id: "p0d2-child-7-g1",
+        tools: &["s1", "s2", "s3", "s4"],
+    },
+    MotifFixtureTask {
+        project: "P0D7",
+        dispatch_id: M_G2,
+        task: "7",
+        attempt: "g2",
+        session_id: "p0d7-child-7-g2",
+        tools: &["s1", "s2", "s3", "s4"],
     },
 ];
 
@@ -3347,7 +3461,7 @@ fn motif_parent_line(spawn: u32, task: &MotifFixtureTask) -> String {
                 "parent_session_id": MOTIF_PARENT_SESSION,
                 "parent_tool_call_id": format!("call-motif-{spawn}"),
                 "spawn_index": spawn,
-                "project_id": "P0D2",
+                "project_id": task.project,
                 "task_id": task.task,
                 "attempt_id": task.attempt
             }
@@ -3443,7 +3557,10 @@ fn cmd_fixture_motif(args: &[String]) -> Result<()> {
         }
         let path = omp
             .join("p0d2")
-            .join(format!("child-{}-{}.jsonl", task.task, task.attempt));
+            .join(format!(
+                "child-{}-{}-{}.jsonl",
+                task.project, task.task, task.attempt
+            ));
         fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
     }
 

@@ -325,6 +325,12 @@ pub struct MarkerLayer {
 #[derive(Clone, Debug)]
 pub struct Input {
     pub token: String,
+    /// Explicit project scope for `(project, task)` addressing. `None` keeps
+    /// the unscoped token contract, where the same token in two projects is
+    /// ambiguous. `Some(project)` filters the same naming and dispatch signals
+    /// by project before reconciliation; it never selects among candidates
+    /// after the fact.
+    pub project: Option<String>,
     pub naming: Vec<NamingSignal>,
     pub markers: Vec<MarkerEvidence>,
     pub delegations: Vec<DelegationEvidence>,
@@ -439,12 +445,23 @@ fn dispatch_issue(
 pub fn resolve(input: &Input) -> Resolution {
     let mut evidence: Vec<Evidence> = Vec::new();
     let mut explain: Vec<String> = Vec::new();
+    let scope = input.project.as_deref();
+    let in_scope = |project: &str| scope.is_none_or(|scope| project == scope);
+    if let Some(project) = scope {
+        explain.push(format!(
+            "Explicit project scope {project}: only naming and dispatch signals of this project are reconciled; other projects are not fallbacks."
+        ));
+    }
 
     // ---- naming: parsed keys and ambiguous candidates -------------------
     let mut parsed_by_file: BTreeMap<u32, NamingEvidence> = BTreeMap::new();
     for signal in &input.naming {
         if signal.status == NamingStatus::Parsed {
-            if let Some(candidate) = signal.candidates.first() {
+            if let Some(candidate) = signal
+                .candidates
+                .first()
+                .filter(|candidate| in_scope(&candidate.project))
+            {
                 parsed_by_file
                     .entry(candidate.file_id)
                     .or_insert_with(|| candidate.clone());
@@ -456,7 +473,7 @@ pub fn resolve(input: &Input) -> Resolution {
     let mut ambiguous_naming: Vec<usize> = Vec::new();
     for signal in &input.naming {
         for candidate in &signal.candidates {
-            if candidate.task != input.token {
+            if candidate.task != input.token || !in_scope(&candidate.project) {
                 continue;
             }
             match signal.status {
@@ -743,11 +760,14 @@ pub fn resolve(input: &Input) -> Resolution {
         ..Default::default()
     };
 
-    let token_join_claims = joins.iter().filter(|join| join.task == input.token).count();
+    let token_join_claims = joins
+        .iter()
+        .filter(|join| join.task == input.token && in_scope(&join.project))
+        .count();
     let mut dispatch_admitted: Vec<DispatchJoin> = Vec::new();
     let mut token_dispatch_conflicts: Vec<usize> = Vec::new();
     for join in &joins {
-        if join.task != input.token {
+        if join.task != input.token || !in_scope(&join.project) {
             continue;
         }
         if let Some(evidence_id) = naming_conflict_evidence.get(&join.child_file_id) {

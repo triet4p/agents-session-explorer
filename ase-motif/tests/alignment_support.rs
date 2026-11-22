@@ -13,14 +13,14 @@ use ase_core::{
 use ase_index::{decode_corpus, sha256_hex, write_address, FsRawStore, Index};
 use ase_motif::align::{align, AlignConfig, AlignOp};
 use ase_motif::motif::{detect, MotifConfig};
-use ase_motif::{membership, project, reopen_call, TaskSequences};
+use ase_motif::{membership, membership_scoped, project, reopen_call, TaskSequences};
 use ase_postings::{
     publication::{self, ArtifactRef, FileWatermark, Manifest, Pointer},
     write_postings, Publication, WriterInput,
 };
 use ase_task::Status;
 use serde_json::json;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -31,9 +31,13 @@ const M_B1: &str = "b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1";
 const M_C1: &str = "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1";
 const M_E1: &str = "e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1";
 
+const M_D2: &str = "d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2";
+const M_F2: &str = "f2f2f2f2-f2f2-4f2f-8f2f-f2f2f2f2f2f2";
+
 const PARENT_SESSION: &str = "p0d2-parent";
 
 struct TaskSpec {
+    project: &'static str,
     dispatch_id: &'static str,
     task: &'static str,
     attempt: &'static str,
@@ -46,6 +50,7 @@ struct TaskSpec {
 // no call sequence at all.
 const TASKS: &[TaskSpec] = &[
     TaskSpec {
+        project: "P0D2",
         dispatch_id: M_A1,
         task: "1",
         attempt: "a1",
@@ -53,6 +58,7 @@ const TASKS: &[TaskSpec] = &[
         tools: &["t1", "t2", "t3", "t4"],
     },
     TaskSpec {
+        project: "P0D2",
         dispatch_id: M_A2,
         task: "1",
         attempt: "a2",
@@ -60,6 +66,7 @@ const TASKS: &[TaskSpec] = &[
         tools: &["t1", "t2", "x1", "t3", "t4"],
     },
     TaskSpec {
+        project: "P0D2",
         dispatch_id: M_B1,
         task: "2",
         attempt: "b1",
@@ -67,6 +74,7 @@ const TASKS: &[TaskSpec] = &[
         tools: &["t1", "t2", "y1", "t3", "t4"],
     },
     TaskSpec {
+        project: "P0D2",
         dispatch_id: M_C1,
         task: "3",
         attempt: "c1",
@@ -74,11 +82,58 @@ const TASKS: &[TaskSpec] = &[
         tools: &["t1", "t2", "z1", "t4"],
     },
     TaskSpec {
+        project: "P0D2",
         dispatch_id: M_E1,
         task: "9",
         attempt: "a1",
         session_id: "p0d2-child-9-a1",
         tools: &[],
+    },
+];
+
+// Focused collision/dedupe fixture: one task repeats identical text, another
+// task repeats the same text under a different key, and one bare token is
+// shared by two projects. Only the same-task duplicate may be deduped.
+const DEDUPE_TASKS: &[TaskSpec] = &[
+    TaskSpec {
+        project: "P0D2",
+        dispatch_id: M_A1,
+        task: "1",
+        attempt: "a1",
+        session_id: "p0d2-child-1-a1",
+        tools: &["t1", "t2", "t3", "t4"],
+    },
+    TaskSpec {
+        project: "P0D2",
+        dispatch_id: M_A2,
+        task: "1",
+        attempt: "a2",
+        session_id: "p0d2-child-1-a2",
+        tools: &["t1", "t2", "t3", "t4"],
+    },
+    TaskSpec {
+        project: "P0D2",
+        dispatch_id: M_B1,
+        task: "2",
+        attempt: "b1",
+        session_id: "p0d2-child-2-b1",
+        tools: &["t1", "t2", "t3", "t4"],
+    },
+    TaskSpec {
+        project: "P0D2",
+        dispatch_id: M_D2,
+        task: "7",
+        attempt: "g1",
+        session_id: "p0d2-child-7-g1",
+        tools: &["t1", "t2", "t3", "t4"],
+    },
+    TaskSpec {
+        project: "P0D7",
+        dispatch_id: M_F2,
+        task: "7",
+        attempt: "g2",
+        session_id: "p0d7-child-7-g2",
+        tools: &["t1", "t2", "t3", "t4"],
     },
 ];
 
@@ -128,7 +183,7 @@ fn parent_line(spawn: u32, task: &TaskSpec) -> String {
                 "parent_session_id": PARENT_SESSION,
                 "parent_tool_call_id": format!("call-motif-{spawn}"),
                 "spawn_index": spawn,
-                "project_id": "P0D2",
+                "project_id": task.project,
                 "task_id": task.task,
                 "attempt_id": task.attempt
             }
@@ -197,6 +252,10 @@ fn expected_versions() -> BTreeMap<String, String> {
 }
 
 fn build_fixture(name: &str) -> Fixture {
+    build_fixture_tasks(name, TASKS)
+}
+
+fn build_fixture_tasks(name: &str, tasks: &[TaskSpec]) -> Fixture {
     let root = fixture_root(name);
     let _ = fs::remove_dir_all(&root);
     let omp = root.join("omp");
@@ -206,12 +265,12 @@ fn build_fixture(name: &str) -> Fixture {
     let index_path = root.join("ase.index");
 
     let mut parent = session_line(PARENT_SESSION);
-    for (spawn, task) in TASKS.iter().enumerate() {
+    for (spawn, task) in tasks.iter().enumerate() {
         parent.push_str(&parent_line(spawn as u32, task));
     }
     write_file(&omp, "p0d2/parent.jsonl", &parent);
 
-    for task in TASKS {
+    for task in tasks {
         let mut content = session_line(task.session_id);
         content.push_str(&child_line(task.dispatch_id, task.session_id));
         if task.tools.is_empty() {
@@ -242,7 +301,10 @@ fn build_fixture(name: &str) -> Fixture {
         }
         write_file(
             &omp,
-            &format!("p0d2/child-{}-{}.jsonl", task.task, task.attempt),
+            &format!(
+                "p0d2/child-{}-{}-{}.jsonl",
+                task.project, task.task, task.attempt
+            ),
             &content,
         );
     }
@@ -601,6 +663,140 @@ fn support_dedupes_tasks_and_reopens_every_occurrence() {
         .occurrences
         .iter()
         .all(|occurrence| occurrence.dispatch_id != M_E1));
+
+    let _ = fs::remove_dir_all(&fixture.root);
+}
+
+fn scoped_task(fixture: &Fixture, project_id: &str, token: &str) -> TaskSequences {
+    let member = membership_scoped(&fixture.index, &fixture.store, token, Some(project_id))
+        .expect("scoped membership");
+    assert_eq!(member.status, Status::Assigned, "{project_id}|{token}");
+    assert_eq!(member.project.as_deref(), Some(project_id));
+    project(&fixture.published, &fixture.index, &member).expect("scoped projection")
+}
+
+#[test]
+fn project_task_addressing_and_text_dedupe_keep_samples_independent() {
+    let fixture = build_fixture_tasks("addressing-dedupe", DEDUPE_TASKS);
+
+    // One bare token, two projects: ambiguous with no attempts and no
+    // fallback to either project.
+    let bare = membership(&fixture.index, &fixture.store, "7").expect("bare membership");
+    assert_eq!(bare.status, Status::Ambiguous);
+    assert!(bare.attempts.is_empty());
+    assert!(bare.task_key.is_none());
+
+    // The same validator, scoped before reconciliation, resolves each key.
+    let left = membership_scoped(&fixture.index, &fixture.store, "7", Some("P0D2"))
+        .expect("left membership");
+    let right = membership_scoped(&fixture.index, &fixture.store, "7", Some("P0D7"))
+        .expect("right membership");
+    assert_eq!(left.status, Status::Assigned);
+    assert_eq!(left.task_key.as_deref(), Some("P0D2|7"));
+    assert_eq!(left.project.as_deref(), Some("P0D2"));
+    assert_eq!(left.attempts.len(), 1);
+    assert_eq!(left.attempts[0].attempt, "g1");
+    assert_eq!(left.attempts[0].project, "P0D2");
+    assert_eq!(right.status, Status::Assigned);
+    assert_eq!(right.task_key.as_deref(), Some("P0D7|7"));
+    assert_eq!(right.project.as_deref(), Some("P0D7"));
+    assert_eq!(right.attempts.len(), 1);
+    assert_eq!(right.attempts[0].attempt, "g2");
+    assert_eq!(right.attempts[0].project, "P0D7");
+
+    // An unknown project is unresolved, never a fallback to the other key.
+    let unknown = membership_scoped(&fixture.index, &fixture.store, "7", Some("NOPE"))
+        .expect("unknown scope");
+    assert_eq!(unknown.status, Status::Unresolved);
+    assert!(unknown.attempts.is_empty());
+
+    let tasks = vec![
+        scoped_task(&fixture, "P0D2", "1"),
+        scoped_task(&fixture, "P0D2", "2"),
+        scoped_task(&fixture, "P0D2", "7"),
+        scoped_task(&fixture, "P0D7", "7"),
+    ];
+    let config = synthetic_config();
+    let report = detect(
+        &fixture.published,
+        &fixture.index,
+        &fixture.store,
+        &tasks,
+        &config,
+    )
+    .expect("motif report");
+
+    // Five raw sequences: task 1 has one duplicate copy; task 2, P0D2|7 and
+    // P0D7|7 share the same text but stay distinct task units.
+    assert_eq!(report.tasks, 4);
+    assert_eq!(report.sequences_raw, 5);
+    assert_eq!(report.sequences, 4);
+    assert_eq!(report.deduplicated_sequences.len(), 1);
+    let duplicate = &report.deduplicated_sequences[0];
+    assert_eq!(duplicate.task, "P0D2|1");
+    assert_eq!(duplicate.attempt, "a2");
+    assert_eq!(duplicate.duplicate_of.task, "P0D2|1");
+    assert_eq!(duplicate.duplicate_of.attempt, "a1");
+    assert_eq!(duplicate.text_hash.len(), 64);
+    assert!(duplicate
+        .text_hash
+        .chars()
+        .all(|character| character.is_ascii_hexdigit()));
+
+    assert_eq!(report.motifs.len(), 1);
+    let motif = &report.motifs[0];
+    assert_eq!(motif.support_exact, 4);
+    assert_eq!(motif.denominator.tasks_in_family, 4);
+    assert_eq!(motif.denominator.sequences_in_family, 4);
+    assert_eq!(motif.denominator.sequences_deduplicated, 1);
+    assert_eq!(motif.denominator.sequences_with_occurrence, 4);
+    assert_eq!(motif.occurrences.len(), 5);
+
+    let tasks_with_occurrence: BTreeSet<&str> =
+        motif.occurrences.iter().map(|occurrence| occurrence.task.as_str()).collect();
+    assert_eq!(tasks_with_occurrence.len(), 4);
+    assert!(tasks_with_occurrence.contains("P0D2|7"));
+    assert!(tasks_with_occurrence.contains("P0D7|7"));
+
+    let duplicates: Vec<&ase_motif::motif::Occurrence> = motif
+        .occurrences
+        .iter()
+        .filter(|occurrence| occurrence.duplicate_of.is_some())
+        .collect();
+    assert_eq!(duplicates.len(), 1);
+    assert_eq!(duplicates[0].task, "P0D2|1");
+    assert_eq!(duplicates[0].attempt, "a2");
+
+    // The duplicate copy is still reopenable evidence.
+    for occurrence in &motif.occurrences {
+        for call in &occurrence.calls {
+            let reopened = reopen_call(
+                &fixture.published,
+                &fixture.index,
+                &fixture.store,
+                &call.evidence,
+            )
+            .expect("occurrence evidence reopens");
+            assert_eq!(reopened, call.signature);
+        }
+    }
+
+    // Repeating the run keeps the same dedupe decision and counting.
+    let repeated = detect(
+        &fixture.published,
+        &fixture.index,
+        &fixture.store,
+        &tasks,
+        &config,
+    )
+    .expect("repeat report");
+    assert_eq!(repeated.sequences_raw, report.sequences_raw);
+    assert_eq!(repeated.sequences, report.sequences);
+    assert_eq!(
+        repeated.deduplicated_sequences.len(),
+        report.deduplicated_sequences.len()
+    );
+    assert_eq!(repeated.motifs[0].support_exact, motif.support_exact);
 
     let _ = fs::remove_dir_all(&fixture.root);
 }

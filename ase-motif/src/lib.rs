@@ -15,9 +15,11 @@
 //!    `shingle-k3k5-v1` tokens in a deterministic order.
 //! 4. [`align::align`] aligns a sequence to a motif skeleton while keeping
 //!    insertions and substitutions as separate observations.
-//! 5. [`motif::detect`] counts support per task across attempts, records the
-//!    denominator and exclusions, and reports a fixed-seed permutation null
-//!    (lift and z) over each motif's reopenable occurrences.
+//! 5. [`motif::detect`] dedupes duplicate sequence text within one task key
+//!    (`motif-sequence-text` / `seq-text-v1`), counts support per task across
+//!    attempts, records the denominator and exclusions, and reports a
+//!    fixed-seed permutation null (lift and z) over each motif's reopenable
+//!    occurrences.
 //!
 //! There is no model on any path.
 
@@ -29,10 +31,13 @@ pub mod projection;
 
 pub use align::{align, AlignConfig, AlignOp, Alignment};
 pub use family::{families, Family, FamilyConfig, FamilyReport, RULE_NAME, RULE_VERSION};
-pub use membership::{membership, AttemptMembership, TaskMembership};
+pub use membership::{
+    membership, membership_scoped, AttemptMembership, TaskMembership,
+};
 pub use motif::{
-    detect, Motif, MotifConfig, MotifReport, NullModel, Occurrence, OccurrenceCall,
-    TaskExclusion, TaskExclusionReason, MOTIF_RULE_NAME, MOTIF_RULE_VERSION, NULL_SEED,
+    detect, DeduplicatedSequence, Motif, MotifConfig, MotifReport, NullModel, Occurrence,
+    OccurrenceCall, SequenceRef, TaskExclusion, TaskExclusionReason, MOTIF_RULE_NAME,
+    MOTIF_RULE_VERSION, NULL_SEED, TEXT_HASH_RULE_NAME, TEXT_HASH_RULE_VERSION,
 };
 pub use projection::{
     project, reopen_call, AttemptSequences, CallEvidence, Sequence, TaskSequences,
