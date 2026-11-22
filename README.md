@@ -249,6 +249,12 @@ re-reads the raw span and re-derives the block from raw JSON. It reports
 block digest match; edited raw is reported as `unverified` even though the
 search hit is still served.
 
+OMP call blocks use the same argument extraction when indexed and reopened: a
+tool call's legacy `args` field wins over `arguments`, and the selected field's
+parsed JSON value is used unchanged (object keys become sorted call-shape
+classes, JSON strings stay scalars). Reopened call digests therefore match the
+indexed block without changing the digest algorithm or index format.
+
 `shingle` reports versioned `k=3..5` CallSig windows. A sequence continues only along a same-session explicit parent chain; forks, unresolved parents and session boundaries start a new sequence and are abstained from. Each row carries its constituent event/selector evidence.
 
 `ase-motif` turns that substrate into motif evidence. Membership for a task token comes from one native dispatch join per attempt: name grammar, path matches and `parentSession` declarations are never passed in, so they cannot widen it. Cohort members may be addressed as `PROJECT|TASK`, the locked `(project, task)` sampling key; the project scope filters the same dispatch validator before reconciliation, so one token in two projects stays two independent samples, while a bare token remains ambiguous and never falls back to a project. For each admitted child session it rebuilds the writer's parent-chain sequences from the call blocks of one pinned generation and keeps every call as `(generation, event, selector, span, block_hash)`; a sequence never crosses a fork or a session boundary, and each call reopens through the same generation, span-checksum, selector and digest checks as `ase open`. Families are the deterministic single-linkage components of a Jaccard overlap over the sequence's `k=3..5` shingle tokens, with `tau` a caller parameter rather than a measured gate.

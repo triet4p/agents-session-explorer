@@ -44,8 +44,8 @@ struct OmpBlock<'a> {
     ty: &'a str,
     text: Option<String>,
     name: Option<String>,
-    args: Option<&'a RawValue>,
-    arguments: Option<&'a RawValue>,
+    args: Option<Value>,
+    arguments: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -132,6 +132,13 @@ fn args_value(raw: Option<&RawValue>) -> Option<Value> {
     raw.and_then(|r| serde_json::from_str(r.get()).ok())
 }
 
+/// OMP call argument convention shared by projection and evidence reopen:
+/// legacy `args` wins over `arguments`, and the selected field's parsed JSON
+/// value is used unchanged (objects stay objects, strings stay strings).
+fn omp_call_args<'a>(args: Option<&'a Value>, arguments: Option<&'a Value>) -> Option<&'a Value> {
+    args.or(arguments)
+}
+
 fn strings_from_raw(raw: Option<&RawValue>) -> Vec<(String, String)> {
     let Some(raw) = raw else { return Vec::new() };
     let Ok(v) = serde_json::from_str::<Value>(raw.get()) else { return Vec::new() };
@@ -182,16 +189,12 @@ pub fn project_omp_content(
                 }
             }
             "toolCall" if role == Role::Assistant => {
-                let raw_args = b
-                    .args
-                    .or(b.arguments)
-                    .map(|r| r.get())
-                    .unwrap_or("null");
-                let args: Value = serde_json::from_str(raw_args).unwrap_or(Value::Null);
+                let null = Value::Null;
+                let args = omp_call_args(b.args.as_ref(), b.arguments.as_ref()).unwrap_or(&null);
                 let mut p = new_projection(
                     local_event, span, selector, ProjectionKind::Call, role,
                 );
-                p.call_sig = normalize_call_sig(b.name.as_deref(), Some(&args));
+                p.call_sig = normalize_call_sig(b.name.as_deref(), Some(args));
                 p.block_hash = digest8(&p.call_sig);
                 out.push(p);
             }
@@ -313,18 +316,30 @@ pub fn extract_block(provider: Provider, line: &[u8], selector: &str) -> ase_cor
     };
     if is_call {
         let name = value.get("name").and_then(Value::as_str);
-        let args = value
-            .get("arguments")
-            .and_then(Value::as_str)
-            .and_then(|s| serde_json::from_str::<Value>(s).ok())
-            .or_else(|| value.get("args").cloned())
-            .or_else(|| value.get("parameters").cloned());
-        let sig = normalize_call_sig(name, args.as_ref());
+        let sig = if provider == Provider::Omp {
+            // An OMP tool call must re-derive exactly what project_omp_content
+            // wrote, including object-valued `arguments` and the legacy
+            // `args`-before-`arguments` field precedence.
+            let null = Value::Null;
+            let args = omp_call_args(value.get("args"), value.get("arguments")).unwrap_or(&null);
+            normalize_call_sig(name, Some(args))
+        } else {
+            // Codex and older call shapes keep their string, `args` and
+            // `parameters` variants.
+            let args = value
+                .get("arguments")
+                .and_then(Value::as_str)
+                .and_then(|s| serde_json::from_str::<Value>(s).ok())
+                .or_else(|| value.get("args").cloned())
+                .or_else(|| value.get("parameters").cloned());
+            normalize_call_sig(name, args.as_ref())
+        };
+        let block_hash = digest8(&sig);
         return Ok(ExtractedBlock {
             kind: ProjectionKind::Call,
             prose: None,
-            call_sig: Some(sig.clone()),
-            block_hash: digest8(&sig),
+            call_sig: Some(sig),
+            block_hash,
         });
     }
     let text = match value {

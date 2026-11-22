@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-22
+
 ### Added
 
 - Added the `ase-motif` library: generation-pinned CallSig sequences for the child sessions of a validated native dispatch membership, per-call reopenable evidence, and deterministic Jaccard families over `k=3..5` shingle tokens. Membership comes from `dispatch-v1` joins only; name, path and `parentSession` candidates are never membership inputs, and no sequence crosses a fork or session boundary.
@@ -16,6 +18,12 @@
 ### Fixed
 
 - Fixed the P0d-2 handoff gaps from the Sprint 2 differential review: cross-project task-token collisions are addressable without an alternate validator or ambiguous fallback, and the design §10.3 `text_hash` dedupe is implemented before counting instead of being waived.
+- Fixed OMP tool-call evidence reopen: object-valued `arguments` now re-derives the same CallSig digest as indexing, so `ase open`, verification and motif calls stay verified; legacy `args` precedence and string arguments are preserved.
+### Limitations
+
+- P0d ablation ran 9 `τ/g` cells over 380 manually corroborated legacy task keys (979 attempts; 11,621 distinct task/text units); defaults remain `τ=0.50, g=2` (196 motifs, median support 3, median z 3.21, median lift 3.28, 162/196 motifs with z≥2). The cohort is manually corroborated legacy membership, not native `task_dispatch_v1`, and the 9-cell grid is descriptive over one frozen cohort; no full ablation rerun is claimed in this release.
+- Offline motif evaluation does not extend the product resolver; no resolver, membership, digest or index-format change is made by the ablation.
+- Object-valued OMP `arguments` reopen parity is fixed; legacy `args` precedence and string arguments are preserved, and the digest algorithm and index format are unchanged.
 
 ## [0.2.0] - TBD
 

@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ase-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ase-core",
  "ase-delegation",
@@ -21,15 +21,15 @@ dependencies = [
 
 [[package]]
 name = "ase-core"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "ase-delegation"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "ase-index"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ase-core",
  "ase-ingest",
@@ -40,7 +40,7 @@ dependencies = [
 
 [[package]]
 name = "ase-ingest"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ase-core",
  "memchr",
@@ -52,11 +52,11 @@ dependencies = [
 
 [[package]]
 name = "ase-markers"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "ase-motif"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ase-core",
  "ase-index",
@@ -69,11 +69,11 @@ dependencies = [
 
 [[package]]
 name = "ase-naming"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "ase-postings"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ase-core",
  "ase-index",
@@ -86,7 +86,7 @@ dependencies = [
 
 [[package]]
 name = "ase-task"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ase-delegation",
  "ase-markers",
