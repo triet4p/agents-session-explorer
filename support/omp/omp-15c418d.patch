@@ -1,0 +1,538 @@
+From 15c418dd2bf169e9e65e3bfca2dc70ebbbac21f7 Mon Sep 17 00:00:00 2001
+From: Le Minh Triet <noreply@localhost>
+Date: Fri, 20 Nov 2026 15:57:47 +0700
+Subject: [PATCH] feat(task): add caller-declared tracking and dispatch
+ provenance
+
+- Record task_dispatch_v1 in parent and task_dispatch_child_v1 in child session.
+- Add optional tracking field to task items and types.
+- Document tracking wire field.
+---
+ docs/tools/task.md                            |   3 +-
+ packages/coding-agent/CHANGELOG.md            |   4 +
+ packages/coding-agent/src/task/executor.ts    |   9 +
+ packages/coding-agent/src/task/index.ts       |   5 +
+ .../src/task/structured-subagent.ts           |  27 ++-
+ packages/coding-agent/src/task/types.ts       |  15 ++
+ .../test/task/structured-subagent.test.ts     | 207 +++++++++++++++++-
+ packages/tui/src/tools/task.ts                |  11 +
+ 8 files changed, 278 insertions(+), 3 deletions(-)
+
+diff --git a/docs/tools/task.md b/docs/tools/task.md
+index 385a4a4..f25eb07 100644
+--- a/docs/tools/task.md
++++ b/docs/tools/task.md
+@@ -32,7 +32,7 @@
+ 
+ ## Inputs
+ 
+-The wire schema is shape-swapped by `task.batch` (default on). One unit of work is `{ name?, agent?, model?, task, solutionSpace, effort?, outputSchema?, schemaMode?, tools?, isolated? }`. `isolated` exists only when `task.isolation.enabled` is true **and plan mode is disabled**; `effort` requires `task.enableEffort=true` (default off), and `tools` requires `eval.tools.enabled` (default on).
++The wire schema is shape-swapped by `task.batch` (default on). One unit of work is `{ name?, agent?, model?, task, solutionSpace, tracking?, effort?, outputSchema?, schemaMode?, tools?, isolated? }`. `isolated` exists only when `task.isolation.enabled` is true **and plan mode is disabled**; `effort` requires `task.enableEffort=true` (default off), and `tools` requires `eval.tools.enabled` (default on).
+ 
+ `task.steps` (default off) swaps `task` for `steps: string[]` in the wire schema and tool description, in either shape: the model sees only one of the two. Runtime accepts either (internal callers, stale transcripts) but rejects an item carrying both.
+ 
+@@ -45,6 +45,7 @@ The wire schema is shape-swapped by `task.batch` (default on). One unit of work
+ | `tasks`         | `array`                                                                                 | Yes (batch)                           | One task item per subagent. Provided names must be unique within the call (case-insensitive). Rejected when `task.batch` is off.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+ | `name`          | `string`                                                                                | No                                    | Stable agent name — becomes the registry/IRC id. The prompt requests CamelCase, at most 32 characters; the wire schema only requires a string. Defaults to a generated AdjectiveNoun name and is uniquified per session by `AgentOutputManager`. Item field in batch shape, top-level in flat shape.                                                                                                                                                                                                                                                                                                                                                                                                       |
+ | `agent`         | `string`                                                                                | No                                    | Agent type to run this item (e.g. `scout`). Defaults to the spawn policy's default agent (usually `task`); items in one batch call may use different agent types. Item field in batch shape, top-level in flat shape.                                                                                                                                                                                                                                                                                                                                                                                                 |
++| `tracking`      | `{ project_id: string, task_id: string, attempt_id: string }`                            | No                                    | Caller-declared work identity for dispatch evidence: a tracked spawn appends `task_dispatch_v1` with a runtime-issued `dispatch_id` to the parent journal, and its child journal gets a `task_dispatch_child_v1` link. Each identifier is 1–128 characters of `[A-Za-z0-9._:-]`; identity is never inferred from the task text or agent name. Item field in batch shape, top-level in flat shape. |
+ | `model`         | `string`                                                                                | No                                    | Per-call model: one exact `provider/model-id[@upstream][:level]`, accepted only when `task.perCallModel` is `on` and limited to operator-approved models; otherwise the call fails preflight (see [Per-call `model`](../task-agent-discovery.md#per-call-model)). `@upstream` is an aggregator-only route pin and part of the model identity. Present in the schema only when `task.perCallModel` is `on`; an unadvertised `model` still reaches preflight instead of being dropped. An empty string is treated as omitted. Item field in batch shape, top-level in flat shape. |
+ | `task`          | `string`                                                                                | Yes, unless `task.steps` is on        | Complete, self-contained instructions. Empty-after-trim is rejected. Item field in batch shape, top-level in flat shape.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+ | `steps`         | `string[]`                                                                              | Yes, when `task.steps` is on          | Replaces `task`: ordered stages for one subagent, each non-empty. The first is the initial prompt; each later one is sent once the subagent delivered the previous (terminal `yield`, or its final message without `yield`). More than `MAX_STEPS` (4) steps share prompts, earlier prompts taking the extra (5 → 2-1-1-1). What the subagent delivers for each earlier prompt reaches its spawner as an IRC progress note (a busy spawner reads it at its next step boundary, an idle one wakes, a `wait` keeps waiting); the last prompt's result is the spawn's result. A failed `yield` or a budget stop ends the chain early. Item field in batch shape, top-level in flat shape.                                                                                                                                                                                                                  |
+diff --git a/packages/coding-agent/CHANGELOG.md b/packages/coding-agent/CHANGELOG.md
+index 938a860..35c7bee 100644
+--- a/packages/coding-agent/CHANGELOG.md
++++ b/packages/coding-agent/CHANGELOG.md
+@@ -2,6 +2,10 @@
+ 
+ ## [Unreleased]
+ 
++### Added
++
++- Added optional `tracking` to `task` items: declare `project_id`, `task_id`, and `attempt_id` to have each spawn record a runtime-issued `dispatch_id` in the parent session and a matching child-session link, so a child session joins to exactly one declared dispatch.
++
+ ## [19.0.0] - 2026-11-18
+ 
+ ### Breaking Changes
+diff --git a/packages/coding-agent/src/task/executor.ts b/packages/coding-agent/src/task/executor.ts
+index 47944dd..e6b033c 100644
+--- a/packages/coding-agent/src/task/executor.ts
++++ b/packages/coding-agent/src/task/executor.ts
+@@ -480,6 +480,7 @@ export interface ExecutorOptions {
+ 	index: number;
+ 	id: string;
+ 	parentToolCallId?: string;
++	dispatchId?: string;
+ 	/**
+ 	 * Spawn runs as a detached background job (parent turn not blocked on it).
+ 	 * Rides the subagent lifecycle/progress payloads so HUD-style surfaces can
+@@ -5463,6 +5464,14 @@ async function runSubprocessOnThisThread(options: ExecutorOptions): Promise<Sing
+ 				// even when the workspace was retained for recovery.
+ 				isolated: worktree !== undefined || undefined,
+ 			});
++			if (options.dispatchId !== undefined) {
++				session.sessionManager.appendCustomEntry("task_dispatch_child_v1", {
++					dispatch_id: options.dispatchId,
++					session_id: session.sessionManager.getSessionId(),
++				});
++				await session.sessionManager.ensureOnDisk();
++				await session.sessionManager.flush();
++			}
+ 
+ 			abortSignal.addEventListener(
+ 				"abort",
+diff --git a/packages/coding-agent/src/task/index.ts b/packages/coding-agent/src/task/index.ts
+index 912ca74..be0a709 100644
+--- a/packages/coding-agent/src/task/index.ts
++++ b/packages/coding-agent/src/task/index.ts
+@@ -355,6 +355,7 @@ function resolveSpawnItems(params: TaskParams): TaskItem[] {
+ 		return params.tasks;
+ 	}
+ 	const item: TaskItem = { name: params.name, agent: params.agent, task: params.task };
++	if ("tracking" in params) item.tracking = params.tracking;
+ 	if (params.steps !== undefined) item.steps = params.steps;
+ 	if ("solutionSpace" in params) item.solutionSpace = params.solutionSpace;
+ 	if ("outputSchema" in params) item.outputSchema = params.outputSchema;
+@@ -379,6 +380,7 @@ function spawnParamsFor(params: TaskParams, item: TaskItem, defaultAgent: string
+ 	const spawn: TaskParams = { agent: item.agent?.trim() || defaultAgent };
+ 	if (item.name !== undefined) spawn.name = item.name;
+ 	if (item.task !== undefined) spawn.task = item.task;
++	if ("tracking" in item) spawn.tracking = item.tracking;
+ 	if (item.steps !== undefined) spawn.steps = item.steps;
+ 	if (item.solutionSpace !== undefined) spawn.solutionSpace = item.solutionSpace;
+ 	if (params.context !== undefined) spawn.context = params.context;
+@@ -968,6 +970,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
+ 		index: number,
+ 		signal: AbortSignal,
+ 	): Promise<SpawnRun | undefined> {
++		// Tracked spawns must not leave durable records for speculative calls that never commit.
++		if (spawn.tracking !== undefined) return undefined;
+ 		if (spawn.tools?.length && this.session.getPlanModeState?.()?.enabled === true) return undefined;
+ 		let blocking: boolean;
+ 		try {
+@@ -1874,6 +1878,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
+ 				context,
+ 				steps: params.steps,
+ 				agent: params.agent,
++				tracking: params.tracking,
+ 				...spawnModelFields(params),
+ 				...this.#resultParams(params),
+ 				...this.#effortParams(params),
+diff --git a/packages/coding-agent/src/task/structured-subagent.ts b/packages/coding-agent/src/task/structured-subagent.ts
+index 938d10a..7c46516 100644
+--- a/packages/coding-agent/src/task/structured-subagent.ts
++++ b/packages/coding-agent/src/task/structured-subagent.ts
+@@ -61,13 +61,14 @@ import { generateTaskName, sanitizeAgentId } from "./name-generator";
+ import { AgentOutputManager } from "./output-manager";
+ import { ovnfsWorkspace } from "./ovnfs";
+ import { resolveSpawnPolicy } from "./spawn-policy";
+-import { type AgentDefinition, canSpawnAtDepth } from "./types";
++import { type AgentDefinition, canSpawnAtDepth, taskTrackingSchema } from "./types";
+ import type {
+ 	AgentProgress,
+ 	SingleResult,
+ 	StructuredSubagentOutput,
+ 	StructuredSubagentSchemaMode,
+ 	StructuredSubagentSchemaSource,
++	TaskTracking,
+ } from "@oh-my-pi/pi-tui/tools/task";
+ import type { WorkPoolYieldItem } from "./workpool-yield";
+ import { parseIsolationBackend } from "./worktree";
+@@ -164,6 +165,7 @@ export interface StructuredSubagentRequest {
+ 	identity?: StructuredSubagentIdentity;
+ 	index?: number;
+ 	parentToolCallId?: string;
++	tracking?: TaskTracking;
+ 	detached?: boolean;
+ 	invokedAt?: number;
+ 	acquiredAt?: number;
+@@ -1045,6 +1047,29 @@ export async function runStructuredSubagent(request: StructuredSubagentRequest):
+ 				: undefined;
+ 		let result: SingleResult;
+ 		try {
++			// A spawn aborted before dispatch has no child session, so recording a
++			// dispatch intent would leave evidence for work that never launched.
++			if (request.tracking !== undefined && request.signal?.aborted !== true) {
++				const journal = request.session.sessionManager;
++				const parentSessionId = journal?.getSessionId?.();
++				if (!journal || !parentSessionId || !request.session.getSessionFile() || !baseOptions.sessionFile) {
++					throw new Error("Tracked task dispatch requires file-backed parent and child sessions");
++				}
++				const { project_id, task_id, attempt_id } = taskTrackingSchema.assert(request.tracking);
++				const dispatchId = crypto.randomUUID();
++				journal.appendCustomEntry("task_dispatch_v1", {
++					dispatch_id: dispatchId,
++					parent_tool_call_id: request.parentToolCallId,
++					spawn_index: request.index ?? 0,
++					parent_session_id: parentSessionId,
++					project_id,
++					task_id,
++					attempt_id,
++				});
++				await journal.ensureOnDisk();
++				await journal.flush();
++				baseOptions.dispatchId = dispatchId;
++			}
+ 			if (!isolationContext) {
+ 				result = await runSubprocess(baseOptions);
+ 				onSubprocessResult?.(result);
+diff --git a/packages/coding-agent/src/task/types.ts b/packages/coding-agent/src/task/types.ts
+index 9dad59b..f1c771f 100644
+--- a/packages/coding-agent/src/task/types.ts
++++ b/packages/coding-agent/src/task/types.ts
+@@ -45,6 +45,13 @@ const outputSchemaInputSchema = type("object | boolean | string | null");
+ // Coarse per-spawn thinking effort; must stay in sync with TASK_EFFORTS in ../thinking.
+ const effortRule = '"lo" | "med" | "hi"' as const;
+ 
++export const taskTrackingSchema = type({
++	project_id: "/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/",
++	task_id: "/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/",
++	attempt_id: "/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/",
++	"+": "reject",
++});
++
+ /**
+  * Keep a batch item's `model` key through undeclared-key deletion: argument
+  * validation re-attaches only root keys, so without this an undeclared
+@@ -67,6 +74,7 @@ export const taskItemSchema = type({
+ 	agent: "string = 'task'",
+ 	task: "string",
+ 	solutionSpace: "string",
++	"tracking?": taskTrackingSchema,
+ 	"outputSchema?": outputSchemaInputSchema,
+ 	"schemaMode?": '"permissive" | "strict"',
+ 	"tools?": "string[]",
+@@ -77,6 +85,7 @@ const taskItemSchemaIsolated = type({
+ 	agent: "string = 'task'",
+ 	task: "string",
+ 	solutionSpace: "string",
++	"tracking?": taskTrackingSchema,
+ 	"outputSchema?": outputSchemaInputSchema,
+ 	"schemaMode?": '"permissive" | "strict"',
+ 	"tools?": "string[]",
+@@ -89,6 +98,7 @@ export const taskSchema = type({
+ 	agent: "string = 'task'",
+ 	task: "string",
+ 	solutionSpace: "string",
++	"tracking?": taskTrackingSchema,
+ 	"outputSchema?": outputSchemaInputSchema,
+ 	"schemaMode?": '"permissive" | "strict"',
+ 	"tools?": "string[]",
+@@ -100,6 +110,7 @@ const taskSchemaNoIsolation = type({
+ 	agent: "string = 'task'",
+ 	task: "string",
+ 	solutionSpace: "string",
++	"tracking?": taskTrackingSchema,
+ 	"outputSchema?": outputSchemaInputSchema,
+ 	"schemaMode?": '"permissive" | "strict"',
+ 	"tools?": "string[]",
+@@ -178,6 +189,7 @@ function createTaskSchema(options: {
+ 				agent,
+ 				...taskFields,
+ 				solutionSpace: "string",
++				"tracking?": taskTrackingSchema,
+ 				...effortField,
+ 				...schemaFields,
+ 				...toolsField,
+@@ -198,6 +210,7 @@ function createTaskSchema(options: {
+ 			agent,
+ 			...taskFields,
+ 			solutionSpace: "string",
++			"tracking?": taskTrackingSchema,
+ 			...effortField,
+ 			...schemaFields,
+ 			...toolsField,
+@@ -218,6 +231,7 @@ function createTaskSchema(options: {
+ 			agent,
+ 			...taskFields,
+ 			solutionSpace: "string",
++			"tracking?": taskTrackingSchema,
+ 			...effortField,
+ 			...schemaFields,
+ 			...toolsField,
+@@ -231,6 +245,7 @@ function createTaskSchema(options: {
+ 		agent,
+ 		...taskFields,
+ 		solutionSpace: "string",
++		"tracking?": taskTrackingSchema,
+ 		...effortField,
+ 		...schemaFields,
+ 		...toolsField,
+diff --git a/packages/coding-agent/test/task/structured-subagent.test.ts b/packages/coding-agent/test/task/structured-subagent.test.ts
+index 149fb71..fa87fcf 100644
+--- a/packages/coding-agent/test/task/structured-subagent.test.ts
++++ b/packages/coding-agent/test/task/structured-subagent.test.ts
+@@ -18,6 +18,7 @@ import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
+ import { parseModelPattern } from "@oh-my-pi/pi-coding-agent/config/model-resolver";
+ import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
+ import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
++import { parseSessionContent } from "@oh-my-pi/pi-coding-agent/session/session-loader";
+ import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
+ import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+ import type { AgentCompactionThresholdOverride } from "@oh-my-pi/pi-coding-agent/config/compaction-threshold";
+@@ -52,7 +53,7 @@ import {
+ import type { AgentDefinition } from "@oh-my-pi/pi-coding-agent/task/types";
+ import type { SingleResult, TaskParams } from "@oh-my-pi/pi-tui/tools/task";
+ import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
+-import { __resetDirsFromEnvForTests, removeWithRetries, setAgentDir, TempDir } from "@oh-my-pi/pi-utils";
++import { __resetDirsFromEnvForTests, isRecord, removeWithRetries, setAgentDir, TempDir } from "@oh-my-pi/pi-utils";
+ import { createInMemoryAuthStorage } from "../helpers/agent-session-setup";
+ import { createSessionDefaults } from "../helpers/session-defaults";
+ 
+@@ -141,6 +142,47 @@ function mockDiscovery(agent: AgentDefinition = AGENT): void {
+ 	vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [agent], projectAgentsDir: null });
+ }
+ 
++interface DispatchRecord {
++	dispatch_id: string;
++	parent_tool_call_id?: string;
++	spawn_index: number;
++	parent_session_id: string;
++	project_id: string;
++	task_id: string;
++	attempt_id: string;
++}
++
++interface DispatchChildLink {
++	dispatch_id: string;
++	session_id: string;
++}
++
++/** Validate a persisted `task_dispatch_v1` payload before reading it as evidence. */
++function isDispatchRecord(value: unknown): value is DispatchRecord {
++	return (
++		isRecord(value) &&
++		typeof value.dispatch_id === "string" &&
++		(value.parent_tool_call_id === undefined || typeof value.parent_tool_call_id === "string") &&
++		typeof value.spawn_index === "number" &&
++		typeof value.parent_session_id === "string" &&
++		typeof value.project_id === "string" &&
++		typeof value.task_id === "string" &&
++		typeof value.attempt_id === "string"
++	);
++}
++
++/** Validate a persisted `task_dispatch_child_v1` payload before reading it as evidence. */
++function isDispatchChildLink(value: unknown): value is DispatchChildLink {
++	return isRecord(value) && typeof value.dispatch_id === "string" && typeof value.session_id === "string";
++}
++
++/** Read a durable session journal through the production loader (title slot included). */
++async function persistedSessionEntries(file: string) {
++	const { entries, invalidHeader } = parseSessionContent(await Bun.file(file).text());
++	if (invalidHeader) throw new Error(`Invalid session header: ${file}`);
++	return entries;
++}
++
+ afterEach(() => {
+ 	vi.restoreAllMocks();
+ 	resetRegisteredArtifactDirsForTests();
+@@ -1299,6 +1341,169 @@ describe("agent frontmatter structured opt-in", () => {
+ 		await removeWithRetries(root);
+ 	});
+ 
++	it("persists distinct dispatch links for sibling tasks with the same numeric suffix", async () => {
++		const cwd = path.join(root, "home", "work");
++		await fs.mkdir(cwd, { recursive: true });
++		await Bun.write(path.join(root, "home", ".omp", "agent", "agents", "plain.md"), agentFile("plain", false));
++		const parent = SessionManager.create(cwd, path.join(root, "sessions"));
++		const parentFile = parent.getSessionFile()!;
++		const authStorage = createInMemoryAuthStorage();
++		authStorage.keys.setRuntime("mock", "test-key");
++		const modelRegistry = new ModelRegistry(authStorage);
++		const model = createMockModel({ handler: () => ({ content: ["ok"] }) });
++		const available = modelRegistry.getAvailable.bind(modelRegistry);
++		vi.spyOn(modelRegistry, "getAvailable").mockImplementation(kind => [model, ...available(kind)]);
++		try {
++			const tool = await TaskTool.create({
++				cwd,
++				hasUI: false,
++				settings: Settings.isolated({
++					"task.batch": true,
++					"task.structured": false,
++					"async.enabled": false,
++					"task.agentIdleTtlMs": 0,
++					"advisor.enabled": false,
++					modelRoles: { default: "mock/mock-model" },
++				}),
++				sessionManager: parent,
++				getSessionFile: () => parentFile,
++				getSessionSpawns: () => "*",
++				modelRegistry,
++				authStorage,
++				enableLsp: false,
++				enableMCP: false,
++				enableIrc: false,
++			} as unknown as ToolSession);
++			const tracked = [
++				{ task_id: "alpha-7", attempt_id: "alpha-7-a1" },
++				{ task_id: "beta-7", attempt_id: "beta-7-a1" },
++			];
++			const work = [
++				{ name: "First", tracking: { project_id: "sample", ...tracked[0]! } },
++				{ name: "Second", tracking: { project_id: "sample", ...tracked[1]! } },
++				// An undeclared identity is still a normal spawn: no dispatch evidence.
++				{ name: "Plain", tracking: undefined },
++			];
++			const result = await tool.execute("tracked-call", {
++				context: "Report.",
++				tasks: work.map(({ name, tracking }) => ({
++					agent: "plain",
++					name,
++					task: "Report.",
++					solutionSpace: "one step: report",
++					...(tracking === undefined ? {} : { tracking }),
++				})),
++			});
++			const children = result.details?.results ?? [];
++			expect(children.map(child => child.exitCode)).toEqual([0, 0, 0]);
++
++			const parentEntries = await persistedSessionEntries(parentFile);
++			const parentHeader = parentEntries[0];
++			if (parentHeader?.type !== "session") throw new Error("parent journal has no session header");
++			expect(parentHeader.id).toBe(parent.getSessionId());
++			const dispatches = parentEntries.flatMap(entry => {
++				if (entry.type !== "custom" || entry.customType !== "task_dispatch_v1") return [];
++				if (!isDispatchRecord(entry.data)) {
++					throw new Error(`Malformed dispatch record: ${JSON.stringify(entry.data)}`);
++				}
++				return [entry.data];
++			});
++			expect(dispatches).toHaveLength(2);
++			expect(new Set(dispatches.map(data => data.dispatch_id)).size).toBe(2);
++
++			const joined: Array<{ dispatchId: string; sessionId: string; taskId: string; attemptId: string }> = [];
++			for (const [index, item] of work.entries()) {
++				const childFile = path.join(parentFile.slice(0, -6), `${children[index]!.id}.jsonl`);
++				const childEntries = await persistedSessionEntries(childFile);
++				const childHeader = childEntries[0];
++				if (childHeader?.type !== "session") throw new Error(`child journal ${index} has no session header`);
++				const links = childEntries.flatMap(entry => {
++					if (entry.type !== "custom" || entry.customType !== "task_dispatch_child_v1") return [];
++					if (!isDispatchChildLink(entry.data)) {
++						throw new Error(`Malformed dispatch child link: ${JSON.stringify(entry.data)}`);
++					}
++					return [entry.data];
++				});
++				if (item.tracking === undefined) {
++					expect(links).toHaveLength(0);
++					continue;
++				}
++				expect(links).toHaveLength(1);
++				const link = links[0]!;
++				// The child session id is runtime-issued, distinct from the declared identity.
++				expect(link.session_id).toBe(childHeader.id);
++				expect(link.session_id).not.toBe(item.tracking.task_id);
++				expect(link.session_id).not.toBe(item.tracking.attempt_id);
++				expect(link.dispatch_id).not.toBe(link.session_id);
++				const matches = dispatches.filter(data => data.dispatch_id === link.dispatch_id);
++				expect(matches).toEqual([
++					{
++						dispatch_id: link.dispatch_id,
++						parent_tool_call_id: "tracked-call",
++						spawn_index: index,
++						parent_session_id: parent.getSessionId(),
++						project_id: item.tracking.project_id,
++						task_id: item.tracking.task_id,
++						attempt_id: item.tracking.attempt_id,
++					},
++				]);
++				joined.push({
++					dispatchId: link.dispatch_id,
++					sessionId: link.session_id,
++					taskId: item.tracking.task_id,
++					attemptId: item.tracking.attempt_id,
++				});
++			}
++
++			// Both persisted declarations share the numeric suffix `-7`; a suffix-based
++			// join would match both, so the join must use the runtime dispatch id.
++			expect(dispatches.filter(data => data.task_id.endsWith("-7"))).toHaveLength(2);
++			expect(joined).toHaveLength(2);
++			expect(joined.map(entry => entry.taskId).sort()).toEqual(tracked.map(item => item.task_id).sort());
++			expect(new Set(joined.map(entry => entry.sessionId)).size).toBe(2);
++			expect(new Set(joined.map(entry => entry.dispatchId)).size).toBe(2);
++		} finally {
++			await parent.close();
++			authStorage.close();
++		}
++	}, 30_000);
++
++	it("leaves no durable dispatch evidence for a tracked spawn aborted before it starts", async () => {
++		mockDiscovery();
++		const cwd = path.join(root, "home", "work");
++		await fs.mkdir(cwd, { recursive: true });
++		const parent = SessionManager.create(cwd, path.join(root, "sessions"));
++		const parentFile = parent.getSessionFile()!;
++		await parent.ensureOnDisk();
++		await parent.flush();
++		const controller = new AbortController();
++		controller.abort();
++		try {
++			const fileSession = {
++				...session({ cwd }),
++				sessionManager: parent,
++				getSessionFile: () => parentFile,
++			} as unknown as ToolSession;
++			const outcome = await runStructuredSubagent(
++				request({
++					session: fileSession,
++					agent: "worker",
++					tracking: { project_id: "sample", task_id: "gamma-7", attempt_id: "gamma-7-a1" },
++					signal: controller.signal,
++				}),
++			);
++			expect(outcome.result.aborted).toBe(true);
++			const parentEntries = await persistedSessionEntries(parentFile);
++			expect(
++				parentEntries.filter(entry => entry.type === "custom" && entry.customType === "task_dispatch_v1"),
++			).toHaveLength(0);
++			const childJournals = (await fs.readdir(parentFile.slice(0, -6))).filter(name => name.endsWith(".jsonl"));
++			expect(childJournals).toEqual([]);
++		} finally {
++			await parent.close();
++		}
++	}, 30_000);
++
+ 	it.each([
+ 		{ setting: false, structured: { reporter: true, plain: false } },
+ 		{ setting: true, structured: { reporter: true, plain: true } },
+diff --git a/packages/tui/src/tools/task.ts b/packages/tui/src/tools/task.ts
+index 32c5716..733ab13 100644
+--- a/packages/tui/src/tools/task.ts
++++ b/packages/tui/src/tools/task.ts
+@@ -2251,6 +2251,13 @@ export interface StructuredSubagentOutput {
+ /** Display cap for a normalized one-line label (roster line, registry `displayName`, prompt field). */
+ export const LABEL_MAX = 80;
+ 
++/** Caller-declared work identity. The runtime separately generates the dispatch id. */
++export interface TaskTracking {
++	project_id: string;
++	task_id: string;
++	attempt_id: string;
++}
++
+ /** Single task item. Fields are optional defensively: args stream in token by token. */
+ export interface TaskItem {
+ 	/** Stable agent name; becomes the registry/IRC id. Default = generated AdjectiveNoun. */
+@@ -2261,6 +2268,8 @@ export interface TaskItem {
+ 	model?: string;
+ 	/** Inline instructions; exactly one of task or steps is required. */
+ 	task?: string;
++	/** Optional structured work identity; never inferred from the task text. */
++	tracking?: TaskTracking;
+ 	/** Ordered stages sent instead of `task` (`task.steps`), each once the child delivered the previous (several share a prompt past four). */
+ 	steps?: string[];
+ 	/** How open-ended the work is; required by the schema and the child's sole `auto` thinking classification input. */
+@@ -2292,6 +2301,8 @@ export interface TaskParams {
+ 	model?: string;
+ 	/** The work (flat form). */
+ 	task?: string;
++	/** See {@link TaskItem.tracking}. */
++	tracking?: TaskTracking;
+ 	/** Ordered stages (flat form); see {@link TaskItem.steps}. */
+ 	steps?: string[];
+ 	/** How open-ended the work is (flat form); see {@link TaskItem.solutionSpace}. */
+-- 
+2.44.0.windows.1
+

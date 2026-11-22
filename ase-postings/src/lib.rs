@@ -9,5 +9,5 @@ pub mod reader;
 pub mod writer;
 
 pub use publication::{open, Publication, Unavailable};
-pub use reader::{block_by_selector, search, shingles_by_event, shingles_by_token, SearchHit};
+pub use reader::{all_prose_blocks, block_by_selector, search, shingles_by_event, shingles_by_token, SearchHit};
 pub use writer::{write_postings, WriterInput, WriterStats};

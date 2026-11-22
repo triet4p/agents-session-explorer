@@ -2,9 +2,35 @@
 
 ## [Unreleased]
 
+## [0.2.0] - TBD
+
+> Release date is deferred until publication; this is the `v0.2.0` release candidate.
+
+### Added
+
+- Added a pinned OMP `v19.0.0` dispatch-tracking patch and Windows x64 integration notes under `support/omp/`.
+- Added versioned `ase audit naming` (rule `file-name-grammar` / `naming-v1`): metadata-only coverage, clusters, ties and unparsed names from indexed file paths, plus `ase fixture-naming` synthetic fixtures. Attempt numbers stay labels; ambiguous splits abstain and no cross-project or cross-parent merge is made.
+- Added versioned `ase audit delegation` (rule `parent-session-delegation` / `delegation-v1`) and `ase fixture-delegation`: indexed `parentSession` declarations become evidence-backed delegation edges only for a unique exact-id target, while missing, ambiguous and self targets stay unlinked without a file-order or path-proximity tie-break. Payload and path observations are kept separate, and a parent never produces a task key or an assignment.
+- Added versioned `ase audit markers` (rule `task-id-marker` / `marker-v1`) and `ase fixture-markers`: `task_id=` markers are observed only in allowlisted user/assistant prose blocks of one published generation, reopened from the pinned raw span by versioned selector, and classified as assignment context, mention or ambiguous with cues retained. Multiple markers and repeated references stay separate occurrences; tool output, thinking and call-argument markers are excluded, output is metadata-only by default, and no task key or session-level assignment is produced.
+- Added `resolve task:` task identity reconciliation (rule `task-identity-reconciliation` / `task-resolve-v2`) and `ase fixture-resolve`: naming, `parentSession`, `task_id` and native dispatch evidence are merged into `assigned`, `ambiguous` or `unresolved`, with per-candidate support/refute/context evidence labelled observed or derived and pinned to rule versions. Only one parsed project-scoped naming key or one unique consistent dispatch join can assign; markers, mentions, path hits and parents never assign alone, and the same token in different projects is never merged.
+- Added native OMP dispatch provenance to `resolve task:` (rule `task-dispatch-provenance` / `dispatch-v1`) and `ase fixture-dispatch`: `task_dispatch_v1` parent records and `task_dispatch_child_v1` links are reopened from their indexed spans, checksum-verified and joined only on one exact runtime `dispatch_id` with matching containing session headers. The result names the executing child session, `project`/`task`/`attempt` and both reopenable spans. Malformed, missing, duplicated, wrong-session, mismatched, name-conflicting or competing claims assign nothing and are reported as rejected claims; untracked journals keep the previous behaviour. No index format change is required.
+
+### Changed
+
+- Changed `ase resolve task:` from literal path candidates to an evidence-backed `assigned` / `ambiguous` / `unresolved` decision; path hits and `parentSession` edges are now reported as context, and an unavailable marker layer is disclosed instead of being treated as no markers.
+
 ### Fixed
 
-- Fixed `ase index --help` to print index usage and exit 0 without reading session sources or writing any index.
+- Fixed address-index `source_type` and `tag` strings resolving inside the path/session string region instead of the type-string region. `show` no longer prints path fragments as a record type, and native `customType` tags such as `task_dispatch_v1` are readable. The type-string boundary is derived from the type table, so indexes written by older builds remain readable and the layout/version is unchanged.
+- Fixed OMP child session headers with a JSON-escaped Windows `parentSession` path: the explicit session id and decoded parent path are now retained, so native dispatch links from those sessions resolve instead of being dropped as path-derived.
+
+### Limitations
+
+- Task identity is supported only for **new OMP sessions recorded with dispatch tracking** (`tracking` on `task` items). Sessions without tracking records remain unresolved; no membership is inferred from file names, prose, parent declarations or a shared numeric suffix.
+- The frozen P0c holdout had **zero assignable members**: no membership could be assigned there. Those results are retained and disclosed; the synthetic P0c-10 batch does not replace the holdout.
+- No historic-session reconstruction, precision/recall claim, or P0d claim is made in this release.
+- The Windows x64 runtime requires the pinned patch plus the public `@oh-my-pi/pi-natives-win32-x64@19.0.0` addon; see `support/omp/README.md`. Other OMP versions are unsupported.
+- CLI JSON and index-format compatibility across releases is not guaranteed; rebuild the index with `ase index --layer all` when it predates dispatch records.
 
 ## [0.1.0] - 2026-11-22
 
@@ -26,10 +52,13 @@
 - Changed `ase open` to require the `--generation` value from the search hit and to reject a stale hit before reading raw source bytes.
 - Changed the benchmark probe set to include a guaranteed no-hit term, a multi-token phrase and classified common/rare terms with observed aggregate counts; lookup is reported unrestricted and source filters apply only to reopened evidence.
 
+### Fixed
+
+- Fixed `ase index --help` and `ase index -h` to print usage and exit 0 without reading session sources or writing an index.
+
 ### Notes
 
-- Preview release built from source on Windows x64; Rust 1.91.1 or newer (`cargo build --release --locked`).
-- `resolve task:` returns candidate path matches only; no task identity (P0c not included).
-- Search lookup p99 304.29 ms; does not meet the <50 ms target. Startup-inclusive p99 is reported separately.
-- Compatibility: P0a/P0b CLI and index formats; rebuild the index after format changes. No real transcript, corpus or private paths are shipped.
-- No binary or registry distribution; no tag or push performed for this commit.
+- [Source-only CLI preview](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.1.0) for P0a/P0b. `resolve task:` returns path candidates only; P0c task identity is not included. No layer calls a model.
+- Build with Rust 1.91.1 or newer: `cargo build --release --locked`. On Windows x64, the release commit indexed four synthetic OMP/Codex files (including JSONL.zst), reopened a search hit with both evidence hashes matching, and verified 24/24 spans.
+- CLI JSON and index format compatibility across releases is not guaranteed. Rebuild from local sources with `ase index --layer all` if needed; an address-only rebuild disables search until postings are rebuilt.
+- Search lookup p99 was **304.29 ms** in-process with a warm cache (3,000 queries, top-k 10), above the **<50 ms** target. See the [P0b report](artifacts/P0b/summary.md) for workload and limitations.

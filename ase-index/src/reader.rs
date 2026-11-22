@@ -19,6 +19,8 @@ pub struct Index {
     pub strings_off: u32,
     pub type_count: u32,
     pub types_off: u32,
+    /// Absolute start of the type-string region inside the string blob.
+    type_base: u32,
     pub build_ts: i64,
 }
 
@@ -43,6 +45,7 @@ impl Index {
             strings_off: get_u32(&data, H_STRINGS_OFF),
             type_count: get_u32(&data, H_TYPE_COUNT),
             types_off: get_u32(&data, H_TYPES_OFF),
+            type_base: 0,
             build_ts: get_i64(&data, H_BUILD),
             data,
         };
@@ -51,9 +54,39 @@ impl Index {
             .and_then(|v| v.checked_add(idx.event_count as usize * EV_LEN))
             .and_then(|v| v.checked_add(idx.session_count as usize * SESSION_LEN))
             .ok_or_else(|| err("index size overflow"))?;
-        if idx.data.len() < need || (idx.strings_off as usize + idx.string_len as usize) > idx.data.len() {
+        if idx.data.len() < need
+            || (idx.strings_off as usize + idx.string_len as usize) > idx.data.len()
+            || (idx.types_off as usize + idx.type_count as usize * TYPE_LEN) > idx.data.len()
+        {
             return Err(err("truncated address index"));
         }
+        // Event type/tag offsets are relative to the type-string region, which
+        // follows the path/session string region in one blob. The type table's
+        // entries span exactly that region, so its length (end - minimum
+        // offset) yields the boundary regardless of whether the writer stored
+        // relative or blob-absolute table offsets.
+        let mut min_type_off = u32::MAX;
+        let mut max_type_end = 0u32;
+        for i in 0..idx.type_count as usize {
+            let rec = idx.types_off as usize + i * TYPE_LEN;
+            let off = get_u32(&idx.data, rec);
+            let len = get_u32(&idx.data, rec + 4);
+            if off < min_type_off {
+                min_type_off = off;
+            }
+            if off.saturating_add(len) > max_type_end {
+                max_type_end = off.saturating_add(len);
+            }
+        }
+        let types_len = if min_type_off == u32::MAX {
+            0
+        } else {
+            max_type_end.saturating_sub(min_type_off)
+        };
+        let type_base = idx
+            .strings_off
+            .saturating_add(idx.string_len.saturating_sub(types_len));
+        let idx = Index { type_base, ..idx };
         Ok(idx)
     }
 
@@ -63,6 +96,22 @@ impl Index {
             return "";
         }
         let base = self.strings_off as usize;
+        let a = base.saturating_add(off as usize);
+        let b = a.saturating_add(len as usize).min(self.data.len());
+        if b > self.data.len() || a > b || a < base {
+            return "";
+        }
+        std::str::from_utf8(&self.data[a..b]).unwrap_or("")
+    }
+
+    /// Resolve an event `source_type`/`tag` offset, which is relative to the
+    /// type-string region rather than to the path/session strings.
+    #[inline]
+    fn type_string(&self, off: u32, len: u32) -> &str {
+        if off == NONE {
+            return "";
+        }
+        let base = self.type_base as usize;
         let a = base.saturating_add(off as usize);
         let b = a.saturating_add(len as usize).min(self.data.len());
         if b > self.data.len() || a > b || a < base {
@@ -261,10 +310,12 @@ impl EventView<'_> {
         role_from(self.rec[E_ROLE])
     }
     pub fn source_type(&self) -> &str {
-        self.index.string(get_u32(self.rec, E_TYPE), get_u32(self.rec, E_TYPE_LEN))
+        self.index
+            .type_string(get_u32(self.rec, E_TYPE), get_u32(self.rec, E_TYPE_LEN))
     }
     pub fn tag(&self) -> &str {
-        self.index.string(get_u32(self.rec, E_TAG), get_u32(self.rec, E_TAG_LEN))
+        self.index
+            .type_string(get_u32(self.rec, E_TAG), get_u32(self.rec, E_TAG_LEN))
     }
     pub fn valid_json(&self) -> bool {
         self.rec[E_FLAGS] & 1 == 1

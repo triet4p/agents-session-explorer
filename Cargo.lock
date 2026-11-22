@@ -4,23 +4,31 @@ version = 4
 
 [[package]]
 name = "ase-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ase-core",
+ "ase-delegation",
  "ase-index",
  "ase-ingest",
+ "ase-markers",
+ "ase-naming",
  "ase-postings",
+ "ase-task",
  "serde_json",
  "zstd",
 ]
 
 [[package]]
 name = "ase-core"
-version = "0.1.0"
+version = "0.2.0"
+
+[[package]]
+name = "ase-delegation"
+version = "0.2.0"
 
 [[package]]
 name = "ase-index"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ase-core",
  "ase-ingest",
@@ -31,7 +39,7 @@ dependencies = [
 
 [[package]]
 name = "ase-ingest"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ase-core",
  "memchr",
@@ -42,8 +50,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ase-markers"
+version = "0.2.0"
+
+[[package]]
+name = "ase-naming"
+version = "0.2.0"
+
+[[package]]
 name = "ase-postings"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ase-core",
  "ase-index",
@@ -52,6 +68,15 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "ase-task"
+version = "0.2.0"
+dependencies = [
+ "ase-delegation",
+ "ase-markers",
+ "ase-naming",
 ]
 
 [[package]]

@@ -1,7 +1,7 @@
 [workspace]
-members = ["ase-core", "ase-ingest", "ase-index", "ase-cli", "ase-postings"]
+members = ["ase-core", "ase-ingest", "ase-index", "ase-cli", "ase-postings", "ase-naming", "ase-delegation", "ase-markers", "ase-task"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"

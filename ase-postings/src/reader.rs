@@ -182,6 +182,45 @@ pub fn block_by_selector(
     }
 }
 
+/// All prose blocks pinned to one generation, in a stable address order.
+/// Only metadata is returned; prose must be re-derived from raw bytes by the
+/// caller through the versioned selector.
+pub fn all_prose_blocks(published: &Publication) -> Result<Vec<BlockRecord>> {
+    let conn = db(published)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT rowid, event_idx, selector, kind, role, file, span_off, span_len,
+                    session_local, parent_idx, block_hash
+             FROM blocks WHERE generation=?1 AND kind='prose'
+             ORDER BY event_idx, selector",
+        )
+        .map_err(|e| err(format!("prose blocks prepare: {e}")))?;
+    let rows = stmt
+        .query_map(params![published.generation], |r| {
+            Ok(BlockRecord {
+                rowid: r.get(0)?,
+                event: r.get(1)?,
+                selector: r.get(2)?,
+                kind: r.get(3)?,
+                role: r.get(4)?,
+                span: SpanRef {
+                    file: r.get(5)?,
+                    off: r.get::<_, i64>(6)? as u64,
+                    len: r.get(7)?,
+                },
+                session_local: r.get(8)?,
+                parent_idx: r.get(9)?,
+                block_hash: r.get(10)?,
+            })
+        })
+        .map_err(|e| err(format!("prose blocks query: {e}")))?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| err(format!("prose block row: {e}")))?);
+    }
+    Ok(out)
+}
+
 pub fn shingles_by_token(published: &Publication, token: &str) -> Result<Vec<ShingleRow>> {
     let conn = db(published)?;
     let mut stmt = conn

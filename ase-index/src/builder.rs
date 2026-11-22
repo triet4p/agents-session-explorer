@@ -266,7 +266,7 @@ pub fn write_address(corpus: &DecodedCorpus, out: &Path) -> Result<BuildStats> {
         types.map.iter().map(|(k, v)| (k.clone(), *v)).collect();
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     for (_, (o, l)) in &entries {
-        buf.extend_from_slice(&(type_strings_base + *o).to_le_bytes());
+        buf.extend_from_slice(&(strings_off + type_strings_base + *o).to_le_bytes());
         buf.extend_from_slice(&l.to_le_bytes());
     }
 

@@ -5,6 +5,7 @@ use ase_core::{
 use memchr::memmem;
 use serde::Deserialize;
 use serde_json::value::RawValue;
+use std::borrow::Cow;
 
 use crate::source::base_name;
 use crate::projection::project_omp_content;
@@ -19,8 +20,8 @@ struct OmpLine<'a> {
     id: Option<&'a str>,
     #[serde(rename = "parentId")]
     parent_id: Option<&'a str>,
-    #[serde(rename = "parentSession")]
-    parent_session: Option<&'a str>,
+    #[serde(rename = "parentSession", borrow)]
+    parent_session: Option<Cow<'a, str>>,
     timestamp: Option<&'a str>,
     message: Option<OmpMessage<'a>>,
 }
@@ -99,7 +100,7 @@ pub fn decode_omp(file: &SourceFile, bytes: &[u8]) -> Result<FileDecode> {
                         ev.role = Role::System;
                         ev.tag = "session".to_string();
                         if let Some(id) = ev.source_id.clone() {
-                            explicit_session = Some((id, v.parent_session.map(str::to_string)));
+                            explicit_session = Some((id, v.parent_session.map(Cow::into_owned)));
                         }
                     }
                     "title" => {
@@ -234,4 +235,46 @@ pub fn decode_omp(file: &SourceFile, bytes: &[u8]) -> Result<FileDecode> {
         return Err(err("empty source file"));
     }
     Ok(FileDecode { events, sessions, stats, projections })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ase_core::{Encoding, Provider};
+
+    fn child_source() -> SourceFile {
+        SourceFile {
+            id: 1,
+            path: "C:/sessions/child/CrimsonOtter.jsonl".to_string(),
+            provider: Provider::Omp,
+            encoding: Encoding::Jsonl,
+            size: 0,
+            mtime_secs: 0,
+            mtime_nanos: 0,
+        }
+    }
+
+    #[test]
+    fn decode_omp_escaped_windows_parent_session_keeps_explicit_session_lineage() {
+        // Shape of a real OMP child header: explicit runtime id plus a
+        // JSON-escaped Windows parent path (unescaped below for comparison).
+        let escaped = r#"{"type":"session","id":"01a1f9c1-d612-733a-afa2-56470b91dbae","parentSession":"C:\\Users\\admin\\.omp\\sessions\\parent.jsonl","timestamp":"2026-11-20T16:20:00.000Z","version":1}"#;
+        let unescaped = r#"{"type":"session","id":"01a1f9c1-d612-733a-afa2-56470b91dbae","parentSession":"plain-parent","timestamp":"2026-11-20T16:20:00.000Z","version":1}"#;
+        let expected_parent = r"C:\Users\admin\.omp\sessions\parent.jsonl";
+
+        let decoded = decode_omp(&child_source(), escaped.as_bytes()).unwrap();
+        assert_eq!(decoded.events[0].source_type, "session");
+        assert!(decoded.events[0].valid_json);
+        assert_eq!(decoded.sessions.len(), 1);
+        let session = &decoded.sessions[0];
+        assert_eq!(session.id, "01a1f9c1-d612-733a-afa2-56470b91dbae");
+        assert!(!session.path_derived);
+        assert_eq!(session.parent_session.as_deref(), Some(expected_parent));
+
+        let plain = decode_omp(&child_source(), unescaped.as_bytes()).unwrap();
+        assert_eq!(plain.sessions.len(), 1);
+        assert_eq!(plain.sessions[0].id, session.id);
+        assert!(!plain.sessions[0].path_derived);
+        assert_eq!(plain.sessions[0].parent_session.as_deref(), Some("plain-parent"));
+    }
 }

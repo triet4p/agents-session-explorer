@@ -1,0 +1,9 @@
+[package]
+name = "ase-task"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ase-naming = { path = "../ase-naming" }
+ase-delegation = { path = "../ase-delegation" }
+ase-markers = { path = "../ase-markers" }

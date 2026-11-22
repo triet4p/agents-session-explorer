@@ -1,0 +1,6 @@
+[package]
+name = "ase-naming"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

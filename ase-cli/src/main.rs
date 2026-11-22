@@ -1,8 +1,18 @@
 //! P0a address CLI plus the P0b derived search layer. All decoding,
 //! addressing and projection derivation lives in library crates; the CLI only
-//! renders metadata. No model is on any query path.
+//! renders metadata. No model is on any query path. P0c-2 adds a metadata-only
+//! file-name grammar audit (`audit naming`) and its synthetic fixture writer;
+//! P0c-3 adds a metadata-only `parentSession` delegation audit
+//! (`audit delegation`) and its synthetic fixture writer.
+//! P0c-4 adds a metadata-only `task_id` marker observation audit
+//! (`audit markers`) and its synthetic fixture writer.
+//! P0c-5 reconciles naming, delegation and marker signals in `resolve task:`
+//! with evidence-backed `assigned`, `ambiguous` or `unresolved` output; it also
+//! adds `fixture-resolve` synthetic fixtures.
+//! P0c-9 joins native OMP `task_dispatch_v1` / `task_dispatch_child_v1`
+//! records into `resolve task:` evidence and adds `fixture-dispatch`.
 
-use ase_core::{err, EventIdx, RawStore, Result, Role, SpanRef, NONE};
+use ase_core::{err, EventIdx, ProjectionKind, Provider, RawStore, Result, Role, SpanRef, NONE};
 use ase_index::{
     build, decode_corpus, sha256_hex, write_address, DecodedCorpus, FsRawStore, Index,
 };
@@ -10,6 +20,13 @@ use ase_ingest::util::fnv64;
 use ase_postings::{
     block_by_selector, publication, search, shingles_by_event, shingles_by_token, Publication,
     WriterInput,
+};
+use ase_naming::{SourceRef, Status};
+use ase_postings::reader::BlockRecord;
+use ase_task::{
+    Basis, DelegationEvidence, DispatchChildLink, DispatchInput, DispatchIntent, DispatchIssue,
+    MarkerEvidence, MarkerLayer, NamingEvidence, NamingSignal, PathEvidence, Resolution, Stance,
+    Status as TaskStatus,
 };
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -40,6 +57,12 @@ fn main() {
         "open" => cmd_open(rest),
         "shingle" => cmd_shingle(rest),
         "bench-search" => cmd_bench_search(rest),
+        "audit" => cmd_audit(rest),
+        "fixture-naming" => cmd_fixture_naming(rest),
+        "fixture-delegation" => cmd_fixture_delegation(rest),
+        "fixture-markers" => cmd_fixture_markers(rest),
+        "fixture-resolve" => cmd_fixture_resolve(rest),
+        "fixture-dispatch" => cmd_fixture_dispatch(rest),
         other => Err(err(format!("unknown command: {other}"))),
     };
     if let Err(e) = result {
@@ -62,6 +85,14 @@ fn usage() {
          ase shingle (--hash HASH | --event N) [--json]\n\
          ase bench-search [--n N] [--seed N] [--top-k N] [--source all|jsonl|zstd] [--probe TERM] [--json]\n\
          ase fixture --out DIR\n\
+         ase audit  naming [--index FILE] [--project PROJECT] [--explain] [--json]\n\
+         ase audit  delegation [--index FILE] [--explain] [--json]\n\
+         ase audit  markers [--index FILE] [--explain] [--json]\n\
+         ase fixture-naming --out DIR\n\
+         ase fixture-delegation --out DIR\n\
+         ase fixture-markers --out DIR\n\
+         ase fixture-resolve --out DIR\n\
+         ase fixture-dispatch --out DIR\n\
          ase fixture-p0b --out DIR"
     );
 }
@@ -655,14 +686,14 @@ fn evidence_for(idx: &Arc<Index>, e: EventIdx) -> Value {
 
 fn cmd_resolve(args: &[String]) -> Result<()> {
     let target = positional(args).ok_or_else(|| err("resolve needs a target"))?;
-    let (idx, store) = load(args)?;
+    let (idx, store, published, publication_reason) = load_with_publication(args)?;
     let idx = &idx;
     let explain = has(args, "--explain");
     let mut relations = Vec::new();
     let mut steps = Vec::new();
-    let mut status = "exact";
+    let status = "exact";
     let subject: String;
-    let mut note = String::new();
+    let note = String::new();
 
     if let Some(id) = target.strip_prefix("session:") {
         let sidx = idx
@@ -780,29 +811,15 @@ fn cmd_resolve(args: &[String]) -> Result<()> {
             ));
         }
     } else if let Some(token) = target.strip_prefix("task:") {
-        status = "partial";
-        subject = format!("task:{token}");
-        note = "Literal source-path token matches are CANDIDATES only; they do not establish task identity. P0c owns task assignment (naming grammar, parentSession, task_id prose, structural/semantic boundaries), none of which P0a performs.".to_string();
-        let needle = token.to_lowercase();
-        steps.push(format!("literal case-insensitive substring search over {} indexed source paths; output is candidate-only, not a task identity", idx.file_count));
-        for fid in 0..idx.file_count {
-            let f = idx.file(fid)?;
-            if !f.path().to_lowercase().contains(&needle) {
-                continue;
-            }
-            for sidx in 0..idx.session_count {
-                let s = idx.session(sidx)?;
-                if s.file() != fid {
-                    continue;
-                }
-                relations.push(relation(
-                    "candidate_path_match",
-                    json!(s.id()),
-                    "source file path (verbatim metadata; candidate, not identity)",
-                    vec![evidence_for(idx, s.header())],
-                ));
-            }
-        }
+        return cmd_resolve_task(
+            args,
+            idx,
+            &store,
+            published.as_ref(),
+            publication_reason.as_deref(),
+            token,
+            explain,
+        );
     } else {
         return Err(err("target must be session:ID, span:F:OFF:LEN or task:TOKEN"));
     }
@@ -853,6 +870,852 @@ fn cmd_resolve(args: &[String]) -> Result<()> {
         if explain {
             for s in v["explain"].as_array().unwrap_or(&empty_arr) {
                 println!("  step: {}", s.as_str().unwrap_or(""));
+            }
+        }
+    }
+    Ok(())
+}
+
+// ------------------------------------------- P0c-5 task identity resolution
+
+fn resolve_naming_signals(idx: &Index) -> Result<Vec<NamingSignal>> {
+    let audit = ase_naming::audit(&naming_sources(idx)?);
+    Ok(audit
+        .signals
+        .iter()
+        .map(|signal| NamingSignal {
+            status: signal.status,
+            reason: signal.reason.clone(),
+            candidates: signal
+                .candidates
+                .iter()
+                .map(|candidate| NamingEvidence {
+                    project: candidate.project.clone(),
+                    task: candidate.task.clone(),
+                    role: candidate.role.clone(),
+                    attempt: candidate.attempt.clone(),
+                    split_rule: candidate.split_rule.clone(),
+                    file_id: signal.source.file_id,
+                    path: signal.source.path.clone(),
+                    provider: signal.source.provider.clone(),
+                    session_id: signal.source.session_id.clone(),
+                    span_anchor: signal.source.span_anchor.clone(),
+                })
+                .collect(),
+        })
+        .collect())
+}
+
+fn resolve_delegation_signals(idx: &Index) -> Result<Vec<DelegationEvidence>> {
+    let audit = ase_delegation::audit(&delegation_inputs(idx)?);
+    Ok(audit
+        .edges
+        .iter()
+        .map(|edge| DelegationEvidence {
+            from_session_id: edge.from.id.clone(),
+            from_span: edge.from.header_span.clone(),
+            declared_id: edge.declaration.declared_id.clone(),
+            observation: edge.declaration.kind.label().to_string(),
+            field: edge.declaration.field.to_string(),
+            link_status: edge.status.label().to_string(),
+            target_session_id: edge.target.as_ref().map(|target| target.id.clone()),
+            target_span: edge.target.as_ref().map(|target| target.header_span.clone()),
+            reason: edge.reason.to_string(),
+        })
+        .collect())
+}
+
+/// Literal path-token matches are observed metadata candidates only.
+fn resolve_path_matches(idx: &Index, token: &str) -> Result<Vec<PathEvidence>> {
+    let needle = token.to_lowercase();
+    let mut out = Vec::new();
+    for sidx in 0..idx.session_count {
+        let session = idx.session(sidx)?;
+        let file = idx.file(session.file())?;
+        if !file.path().to_lowercase().contains(&needle) {
+            continue;
+        }
+        out.push(PathEvidence {
+            session_id: session.id().to_string(),
+            path: file.path().to_string(),
+            provider: file.provider().label().to_string(),
+            span_anchor: span_label(idx.event(session.header())?.span()),
+        });
+    }
+    Ok(out)
+}
+
+/// Native OMP dispatch provenance records, addressed by their custom-type tag.
+const DISPATCH_PARENT_TAG: &str = "task_dispatch_v1";
+const DISPATCH_CHILD_TAG: &str = "task_dispatch_child_v1";
+
+/// Producer identity grammar shared by project/task/attempt:
+/// `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`.
+fn valid_dispatch_identity(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.is_empty()
+        || bytes.len() > 128
+        || !bytes[0].is_ascii_alphanumeric()
+    {
+        return false;
+    }
+    bytes
+        .iter()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
+}
+
+/// `crypto.randomUUID()` canonical form, without pinning a UUID version.
+fn canonical_uuid(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 36 {
+        return false;
+    }
+    bytes.iter().enumerate().all(|(index, byte)| match index {
+        8 | 13 | 18 | 23 => *byte == b'-',
+        _ => byte.is_ascii_hexdigit(),
+    })
+}
+
+fn push_dispatch_issue(
+    input: &mut DispatchInput,
+    record: &str,
+    kind: &str,
+    dispatch_id: Option<String>,
+    task: Option<String>,
+    event: u32,
+    span: String,
+    detail: String,
+) {
+    input.issues.push(DispatchIssue {
+        record: record.to_string(),
+        kind: kind.to_string(),
+        dispatch_id,
+        task,
+        event,
+        span,
+        detail,
+    });
+}
+
+/// Re-open every indexed dispatch record, verify its span checksum and parse
+/// only the native producer schema. No prose is read or emitted.
+fn resolve_dispatch_signals(idx: &Index, store: &FsRawStore) -> Result<DispatchInput> {
+    let mut input = DispatchInput::default();
+    for event in 0..idx.event_count {
+        let view = idx.event(event)?;
+        let tag = view.tag();
+        let is_parent = tag == DISPATCH_PARENT_TAG;
+        if !is_parent && tag != DISPATCH_CHILD_TAG {
+            continue;
+        }
+        let file = idx.file(view.span().file)?;
+        if file.provider() != Provider::Omp {
+            continue;
+        }
+        let span = span_label(view.span());
+        let raw = match store.span(view.span()) {
+            Ok(raw) => raw,
+            Err(error) => {
+                push_dispatch_issue(
+                    &mut input,
+                    if is_parent { "parent" } else { "child" },
+                    "unreadable_span",
+                    None,
+                    None,
+                    event,
+                    span,
+                    format!("raw span could not be re-read: {error}"),
+                );
+                continue;
+            }
+        };
+        if fnv64(&raw) != view.hash() {
+            push_dispatch_issue(
+                &mut input,
+                if is_parent { "parent" } else { "child" },
+                "span_hash_mismatch",
+                None,
+                None,
+                event,
+                span,
+                "the re-read span checksum does not match the indexed checksum".to_string(),
+            );
+            continue;
+        }
+        let session_index = view.session();
+        if session_index == NONE {
+            push_dispatch_issue(
+                &mut input,
+                if is_parent { "parent" } else { "child" },
+                "unresolved_session",
+                None,
+                None,
+                event,
+                span,
+                "the record is not assigned to an indexed journal session".to_string(),
+            );
+            continue;
+        }
+        let session = idx.session(session_index)?;
+        if session.path_derived() {
+            push_dispatch_issue(
+                &mut input,
+                if is_parent { "parent" } else { "child" },
+                "path_derived_session",
+                None,
+                None,
+                event,
+                span,
+                "the record is not in a journal with an explicit native session header".to_string(),
+            );
+            continue;
+        }
+        let containing_session_id = session.id().to_string();
+        if containing_session_id.is_empty() {
+            push_dispatch_issue(
+                &mut input,
+                if is_parent { "parent" } else { "child" },
+                "unresolved_session",
+                None,
+                None,
+                event,
+                span,
+                "the containing journal session id is empty".to_string(),
+            );
+            continue;
+        }
+        let parsed: Value = match serde_json::from_slice(&raw) {
+            Ok(value) => value,
+            Err(_) => {
+                push_dispatch_issue(
+                    &mut input,
+                    if is_parent { "parent" } else { "child" },
+                    "malformed_record",
+                    None,
+                    None,
+                    event,
+                    span,
+                    "the record line is not valid JSON".to_string(),
+                );
+                continue;
+            }
+        };
+        let shape_ok = parsed.get("type").and_then(Value::as_str) == Some("custom")
+            && parsed.get("customType").and_then(Value::as_str) == Some(tag);
+        let data = parsed.get("data");
+        if !shape_ok || !data.is_some_and(Value::is_object) {
+            push_dispatch_issue(
+                &mut input,
+                if is_parent { "parent" } else { "child" },
+                "record_shape",
+                None,
+                None,
+                event,
+                span,
+                "the record is not a custom entry with an object data payload".to_string(),
+            );
+            continue;
+        }
+        let data = data.expect("object data checked");
+        let task_hint = data
+            .get("task_id")
+            .and_then(Value::as_str)
+            .filter(|value| valid_dispatch_identity(value))
+            .map(str::to_string);
+        let dispatch_id = match data.get("dispatch_id").and_then(Value::as_str) {
+            Some(value) if canonical_uuid(value) => value.to_string(),
+            _ => {
+                push_dispatch_issue(
+                    &mut input,
+                    if is_parent { "parent" } else { "child" },
+                    "invalid_dispatch_id",
+                    None,
+                    task_hint,
+                    event,
+                    span,
+                    "dispatch_id is missing or not a canonical runtime UUID".to_string(),
+                );
+                continue;
+            }
+        };
+        if is_parent {
+            let parent_session_id = match data.get("parent_session_id").and_then(Value::as_str) {
+                Some(value) if !value.is_empty() => value.to_string(),
+                _ => {
+                    push_dispatch_issue(
+                        &mut input,
+                        "parent",
+                        "invalid_parent_record",
+                        Some(dispatch_id),
+                        task_hint,
+                        event,
+                        span,
+                        "parent_session_id is missing or empty".to_string(),
+                    );
+                    continue;
+                }
+            };
+            let project = match data.get("project_id").and_then(Value::as_str) {
+                Some(value) if valid_dispatch_identity(value) => value.to_string(),
+                _ => {
+                    push_dispatch_issue(
+                        &mut input,
+                        "parent",
+                        "invalid_parent_identity",
+                        Some(dispatch_id),
+                        task_hint,
+                        event,
+                        span,
+                        "project_id is missing or violates the producer identity grammar".to_string(),
+                    );
+                    continue;
+                }
+            };
+            let task = match data.get("task_id").and_then(Value::as_str) {
+                Some(value) if valid_dispatch_identity(value) => value.to_string(),
+                _ => {
+                    push_dispatch_issue(
+                        &mut input,
+                        "parent",
+                        "invalid_parent_identity",
+                        Some(dispatch_id),
+                        None,
+                        event,
+                        span,
+                        "task_id is missing or violates the producer identity grammar".to_string(),
+                    );
+                    continue;
+                }
+            };
+            let attempt = match data.get("attempt_id").and_then(Value::as_str) {
+                Some(value) if valid_dispatch_identity(value) => value.to_string(),
+                _ => {
+                    push_dispatch_issue(
+                        &mut input,
+                        "parent",
+                        "invalid_parent_identity",
+                        Some(dispatch_id),
+                        Some(task),
+                        event,
+                        span,
+                        "attempt_id is missing or violates the producer identity grammar".to_string(),
+                    );
+                    continue;
+                }
+            };
+            let spawn_index = match data.get("spawn_index").and_then(Value::as_u64) {
+                Some(value) if value <= u32::MAX as u64 => value as u32,
+                _ => {
+                    push_dispatch_issue(
+                        &mut input,
+                        "parent",
+                        "invalid_spawn_index",
+                        Some(dispatch_id),
+                        Some(task),
+                        event,
+                        span,
+                        "spawn_index is missing or not an unsigned 32-bit integer".to_string(),
+                    );
+                    continue;
+                }
+            };
+            let parent_tool_call_id = match data.get("parent_tool_call_id") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(value)) => Some(value.clone()),
+                Some(_) => {
+                    push_dispatch_issue(
+                        &mut input,
+                        "parent",
+                        "invalid_parent_record",
+                        Some(dispatch_id),
+                        Some(task),
+                        event,
+                        span,
+                        "parent_tool_call_id is present but not a string".to_string(),
+                    );
+                    continue;
+                }
+            };
+            input.parents.push(DispatchIntent {
+                dispatch_id,
+                parent_session_id,
+                parent_tool_call_id,
+                spawn_index,
+                project,
+                task,
+                attempt,
+                event,
+                span,
+                file_id: view.span().file,
+                containing_session_id,
+                span_verified: true,
+            });
+        } else {
+            let session_id = match data.get("session_id").and_then(Value::as_str) {
+                Some(value) if !value.is_empty() => value.to_string(),
+                _ => {
+                    push_dispatch_issue(
+                        &mut input,
+                        "child",
+                        "invalid_child_record",
+                        Some(dispatch_id),
+                        None,
+                        event,
+                        span,
+                        "session_id is missing or empty".to_string(),
+                    );
+                    continue;
+                }
+            };
+            input.children.push(DispatchChildLink {
+                dispatch_id,
+                session_id,
+                event,
+                span,
+                file_id: view.span().file,
+                containing_session_id,
+                span_verified: true,
+            });
+        }
+    }
+    Ok(input)
+}
+
+/// Allowlisted prose blocks of one published generation that verify by span
+/// hash, selector re-derivation and block digest. Prose text never leaves here.
+struct VerifiedProse {
+    blocks_total: usize,
+    excluded_role_blocks: usize,
+    unverified_blocks: usize,
+    texts: Vec<ase_markers::Block>,
+    kept: Vec<BlockRecord>,
+}
+
+fn verified_prose(
+    idx: &Arc<Index>,
+    store: &FsRawStore,
+    published: &Publication,
+) -> Result<VerifiedProse> {
+    let blocks = ase_postings::all_prose_blocks(published)?;
+    let mut texts: Vec<ase_markers::Block> = Vec::with_capacity(blocks.len());
+    let mut kept = Vec::with_capacity(blocks.len());
+    let mut excluded_role_blocks = 0usize;
+    let mut unverified_blocks = 0usize;
+    for block in &blocks {
+        if block.role != "user" && block.role != "assistant" {
+            excluded_role_blocks += 1;
+            continue;
+        }
+        if block.event >= idx.event_count {
+            unverified_blocks += 1;
+            continue;
+        }
+        let ev = idx.event(block.event)?;
+        if ev.span() != block.span {
+            unverified_blocks += 1;
+            continue;
+        }
+        let raw = store.span(block.span)?;
+        if fnv64(&raw) != ev.hash() {
+            unverified_blocks += 1;
+            continue;
+        }
+        let provider = idx.file(block.span.file)?.provider();
+        let extracted = match ase_ingest::extract_block(provider, &raw, &block.selector) {
+            Ok(value) => value,
+            Err(_) => {
+                unverified_blocks += 1;
+                continue;
+            }
+        };
+        if extracted.kind != ProjectionKind::Prose
+            || hash_bytes(&block.block_hash) != Some(extracted.block_hash)
+        {
+            unverified_blocks += 1;
+            continue;
+        }
+        let text = extracted.prose.unwrap_or_default();
+        if text.trim().is_empty() {
+            unverified_blocks += 1;
+            continue;
+        }
+        kept.push(block.clone());
+        texts.push(ase_markers::Block { text });
+    }
+    Ok(VerifiedProse {
+        blocks_total: blocks.len(),
+        excluded_role_blocks,
+        unverified_blocks,
+        texts,
+        kept,
+    })
+}
+
+/// Convert verified marker occurrences into metadata-only resolver evidence.
+fn marker_evidence(
+    idx: &Index,
+    kept: &[BlockRecord],
+    observations: &[ase_markers::Observation],
+    published: &Publication,
+) -> Result<Vec<MarkerEvidence>> {
+    let mut out = Vec::with_capacity(observations.len());
+    for observation in observations {
+        let block = &kept[observation.block_index];
+        let sidx = idx.event(block.event)?.session();
+        let session_id = if sidx != NONE {
+            idx.session(sidx)?.id().to_string()
+        } else {
+            String::new()
+        };
+        out.push(MarkerEvidence {
+            value: observation.value.clone(),
+            usage: observation.usage,
+            reason: observation.reason.to_string(),
+            assignment_cue: observation.assignment_cue.clone(),
+            mention_cue: observation.mention_cue.clone(),
+            occurrence_in_block: observation.occurrence_in_block,
+            char_start: observation.char_start,
+            char_end: observation.char_end,
+            generation: published.generation.clone(),
+            event: block.event,
+            span: span_label(block.span),
+            selector: block.selector.clone(),
+            block_hash: block.block_hash.clone(),
+            role: block.role.clone(),
+            file_id: block.span.file,
+            session_id,
+        });
+    }
+    Ok(out)
+}
+
+fn task_evidence_value(
+    evidence: &ase_task::Evidence,
+    stance: Stance,
+    index_label: &str,
+) -> Value {
+    match evidence {
+        ase_task::Evidence::Naming(naming) => json!({
+            "kind": evidence.kind(),
+            "basis": Basis::Derived.label(),
+            "stance": stance.label(),
+            "rule": { "name": ase_naming::RULE_NAME, "version": ase_naming::RULE_VERSION },
+            "project": &naming.project,
+            "task": &naming.task,
+            "role": &naming.role,
+            "attempt": &naming.attempt,
+            "split_rule": &naming.split_rule,
+            "source": {
+                "file_id": naming.file_id,
+                "path": &naming.path,
+                "provider": &naming.provider,
+                "session_id": &naming.session_id,
+                "span_anchor": &naming.span_anchor
+            },
+            "note": "The path is observed metadata; project/task/role/attempt are derived from the basename inside its (project,parent) scope."
+        }),
+        ase_task::Evidence::Marker(marker) => json!({
+            "kind": evidence.kind(),
+            "basis": Basis::Observed.label(),
+            "stance": stance.label(),
+            "rule": { "name": ase_markers::RULE_NAME, "version": ase_markers::RULE_VERSION },
+            "value": &marker.value,
+            "char_start": marker.char_start,
+            "char_end": marker.char_end,
+            "observed": {
+                "generation": &marker.generation,
+                "event": marker.event,
+                "span": &marker.span,
+                "selector": &marker.selector,
+                "block_hash": &marker.block_hash,
+                "role": &marker.role,
+                "file_id": marker.file_id,
+                "session_id": &marker.session_id
+            },
+            "derived": {
+                "usage": marker.usage.label(),
+                "reason": &marker.reason,
+                "assignment_cue": &marker.assignment_cue,
+                "mention_cue": &marker.mention_cue,
+                "occurrence_in_block": marker.occurrence_in_block,
+                "rule": { "name": ase_markers::RULE_NAME, "version": ase_markers::RULE_VERSION }
+            },
+            "note": "The occurrence is observed; its assignment/mention class is derived. No prose text is emitted."
+        }),
+        ase_task::Evidence::Delegation(delegation) => json!({
+            "kind": evidence.kind(),
+            "basis": Basis::Observed.label(),
+            "stance": stance.label(),
+            "rule": { "name": ase_delegation::RULE_NAME, "version": ase_delegation::RULE_VERSION },
+            "observed": {
+                "from_session_id": &delegation.from_session_id,
+                "from_span": &delegation.from_span,
+                "declared_id": &delegation.declared_id,
+                "field": &delegation.field,
+                "observation": &delegation.observation
+            },
+            "derived": {
+                "link_status": &delegation.link_status,
+                "target_session_id": &delegation.target_session_id,
+                "target_span": &delegation.target_span,
+                "reason": &delegation.reason,
+                "rule": { "name": ase_delegation::RULE_NAME, "version": ase_delegation::RULE_VERSION }
+            },
+            "task_boundary": "A parentSession declaration is a delegated_from edge, never a task assignment."
+        }),
+        ase_task::Evidence::Path(path) => json!({
+            "kind": evidence.kind(),
+            "basis": Basis::Observed.label(),
+            "stance": stance.label(),
+            "session_id": &path.session_id,
+            "path": &path.path,
+            "provider": &path.provider,
+            "span_anchor": &path.span_anchor,
+            "rule": { "name": ase_task::PATH_RULE_NAME, "version": ase_task::PATH_RULE_VERSION },
+            "note": "A literal source-path substring is a candidate, not task identity."
+        }),
+        ase_task::Evidence::Dispatch(join) => json!({
+            "kind": evidence.kind(),
+            "basis": Basis::Observed.label(),
+            "stance": stance.label(),
+            "rule": { "name": ase_task::DISPATCH_RULE_NAME, "version": ase_task::DISPATCH_RULE_VERSION },
+            "observed": {
+                "dispatch_id": &join.dispatch_id,
+                "parent_session_id": &join.parent_session_id,
+                "child_session_id": &join.child_session_id,
+                "parent_tool_call_id": &join.parent_tool_call_id,
+                "spawn_index": join.spawn_index,
+                "parent": {
+                    "event": join.parent_event,
+                    "file_id": join.parent_file_id,
+                    "span": &join.parent_span,
+                    "span_hash_verified": join.parent_span_verified,
+                    "reopen": format!("ase show {} --index {} --json --explain", join.parent_span, index_label)
+                },
+                "child": {
+                    "event": join.child_event,
+                    "file_id": join.child_file_id,
+                    "span": &join.child_span,
+                    "span_hash_verified": join.child_span_verified,
+                    "reopen": format!("ase show {} --index {} --json --explain", join.child_span, index_label)
+                }
+            },
+            "derived": {
+                "project": &join.project,
+                "task": &join.task,
+                "attempt": &join.attempt,
+                "join": "exactly one task_dispatch_v1 parent record and one task_dispatch_child_v1 link for this dispatch_id; the structured parent_session_id and child session_id match their containing journals; parent and child journals differ; both spans verified",
+                "rule": { "name": ase_task::DISPATCH_RULE_NAME, "version": ase_task::DISPATCH_RULE_VERSION }
+            },
+            "task_boundary": "The join assigns the executing child session named by the runtime records only; a suffix, path, worker name, prose echo or parent-only claim never does. A malformed, duplicated, mismatched or competing record assigns nothing."
+        }),
+    }
+}
+
+fn task_evidence_list(
+    resolution: &Resolution,
+    ids: &[usize],
+    stance: Stance,
+    index_label: &str,
+) -> Vec<Value> {
+    ids.iter()
+        .filter_map(|id| resolution.evidence.get(*id))
+        .map(|evidence| task_evidence_value(evidence, stance, index_label))
+        .collect()
+}
+
+fn task_candidate_relation(
+    resolution: &Resolution,
+    candidate: &ase_task::Candidate,
+    index_label: &str,
+) -> Value {
+    let kind = if resolution.status == TaskStatus::Assigned {
+        "assigned_to"
+    } else {
+        "candidate_task"
+    };
+    json!({
+        "kind": kind,
+        "target": {
+            "project": &candidate.project,
+            "task": &candidate.task,
+            "task_key": &candidate.task_key
+        },
+        "candidate_state": candidate.state.label(),
+        "reason": &candidate.reason,
+        "support": task_evidence_list(resolution, &candidate.supports, Stance::Support, index_label),
+        "refute": task_evidence_list(resolution, &candidate.refutes, Stance::Refute, index_label),
+        "context": task_evidence_list(resolution, &candidate.context, Stance::Context, index_label),
+        "rule": { "name": resolution.rule.name, "version": resolution.rule.version }
+    })
+}
+
+fn cmd_resolve_task(
+    args: &[String],
+    idx: &Arc<Index>,
+    store: &FsRawStore,
+    published: Option<&Publication>,
+    publication_reason: Option<&str>,
+    token: &str,
+    explain: bool,
+) -> Result<()> {
+    if token.trim().is_empty() {
+        return Err(err("resolve task: needs a non-empty token"));
+    }
+    let naming = resolve_naming_signals(idx)?;
+    let delegations = resolve_delegation_signals(idx)?;
+    let paths = resolve_path_matches(idx, token)?;
+    let dispatch = resolve_dispatch_signals(idx, store)?;
+    let naming_count = naming.len();
+    let delegation_count = delegations.len();
+    let path_count = paths.len();
+    let dispatch_parent_count = dispatch.parents.len();
+    let dispatch_child_count = dispatch.children.len();
+
+    let (marker_layer, markers) = match published {
+        Some(published) => {
+            let verified = verified_prose(idx, store, published)?;
+            let audit = ase_markers::audit(&verified.texts);
+            let markers = marker_evidence(idx, &verified.kept, &audit.observations, published)?;
+            let layer = MarkerLayer {
+                generation: Some(published.generation.clone()),
+                unavailable: None,
+                blocks_total: verified.blocks_total,
+                blocks_scanned: verified.texts.len(),
+                excluded_role_blocks: verified.excluded_role_blocks,
+                unverified_blocks: verified.unverified_blocks,
+            };
+            (layer, markers)
+        }
+        None => (
+            MarkerLayer {
+                generation: None,
+                unavailable: Some(
+                    publication_reason
+                        .unwrap_or("derived layer unavailable")
+                        .to_string(),
+                ),
+                blocks_total: 0,
+                blocks_scanned: 0,
+                excluded_role_blocks: 0,
+                unverified_blocks: 0,
+            },
+            Vec::new(),
+        ),
+    };
+
+    let marker_count = markers.iter().filter(|marker| marker.value == token).count();
+    let resolution = ase_task::resolve(&ase_task::Input {
+        token: token.to_string(),
+        naming,
+        markers,
+        delegations,
+        paths,
+        dispatch,
+        marker_layer,
+    });
+
+    let index_label = index_path(args).to_string_lossy().to_string();
+    let relations = resolution
+        .candidates
+        .iter()
+        .map(|candidate| task_candidate_relation(&resolution, candidate, &index_label))
+        .collect::<Vec<Value>>();
+    let marker_layer = &resolution.marker_layer;
+    let marker_layer_value = json!({
+        "status": if marker_layer.generation.is_some() { "available" } else { "unavailable" },
+        "reason": &marker_layer.unavailable,
+        "generation": &marker_layer.generation,
+        "blocks_total": marker_layer.blocks_total,
+        "blocks_scanned": marker_layer.blocks_scanned,
+        "excluded_role_blocks": marker_layer.excluded_role_blocks,
+        "unverified_blocks": marker_layer.unverified_blocks
+    });
+    let dispatch_layer = &resolution.dispatch;
+    let dispatch_layer_value = json!({
+        "status": "available",
+        "rule": { "name": ase_task::DISPATCH_RULE_NAME, "version": ase_task::DISPATCH_RULE_VERSION },
+        "parents_indexed": dispatch_parent_count,
+        "child_links_indexed": dispatch_child_count,
+        "unique_joins": dispatch_layer.joined,
+        "rejected_groups": dispatch_layer.rejected_groups,
+        "record_issues": dispatch_layer.issues_total,
+        "claims_for_token": dispatch_layer.claims_for_token,
+        "rejected_claims_for_token": dispatch_layer
+            .issues_for_token
+            .iter()
+            .map(|issue| json!({
+                "record": &issue.record,
+                "kind": &issue.kind,
+                "dispatch_id": &issue.dispatch_id,
+                "event": issue.event,
+                "span": &issue.span,
+                "detail": &issue.detail
+            }))
+            .collect::<Vec<Value>>()
+    });
+    let rule = &resolution.rule;
+    let v = json!({
+        "command": "resolve",
+        "subject": format!("task:{token}"),
+        "status": resolution.status.label(),
+        "task_key": &resolution.task_key,
+        "resolution": {
+            "status": resolution.status.label(),
+            "task_key": &resolution.task_key,
+            "summary": &resolution.summary,
+            "candidate_count": resolution.candidates.len(),
+            "rule": { "name": &rule.name, "version": &rule.version }
+        },
+        "relations": relations,
+        "signals": {
+            "naming_signals_indexed": naming_count,
+            "marker_occurrences_for_token": marker_count,
+            "delegation_edges_indexed": delegation_count,
+            "path_matches": path_count,
+            "marker_layer": marker_layer_value,
+            "dispatch_layer": dispatch_layer_value
+        },
+        "explain": if explain { resolution.explain.clone() } else { Vec::<String>::new() },
+        "hash_verified": Value::Null,
+        "guarantees": [
+            "Assignment requires exactly one project-scoped key from a parsed name grammar or from one unique, consistent native dispatch join; assignment-context markers in the same file corroborate it but no marker alone assigns a task.",
+            "A dispatch join requires exactly one task_dispatch_v1 parent record and one task_dispatch_child_v1 link for the same runtime dispatch_id, structured session ids that match their containing journals, distinct parent and child journals, and both raw spans re-verified against indexed bytes.",
+            "Malformed, missing, duplicated, wrong-session, mismatched or competing dispatch records never assign; they are reported as rejected claims with their span and reason.",
+            "A conflicting layer returns ambiguous with every candidate, its support/refute evidence and reasons; insufficient evidence stays unresolved.",
+            "A mention, an ambiguous marker, a literal path match or a parentSession declaration is a candidate/context only, never an assignment.",
+            "Project is part of the key: the same token in different projects is reported separately and never merged. The child session named by a dispatch join is the executing child, not a suffix or worker-name match.",
+            "Observed and derived evidence are labelled with their rule name/version; marker evidence is pinned to one generation, span, selector and block digest, and dispatch evidence carries both parent and child record spans.",
+            "Metadata-only: no prose text is emitted, no postings content is returned and no model is called."
+        ]
+    });
+    if has(args, "--json") {
+        println!("{}", serde_json::to_string_pretty(&v).unwrap());
+    } else {
+        println!(
+            "resolve task:{token} -> {} ({} candidate(s))",
+            resolution.status.label(),
+            resolution.candidates.len()
+        );
+        println!("  {}", resolution.summary);
+        for r in &relations {
+            let target = &r["target"];
+            println!(
+                "  {} -> project={} task={} state={} support={} refute={} context={}",
+                r["kind"].as_str().unwrap_or(""),
+                target["project"].as_str().unwrap_or("-"),
+                target["task"].as_str().unwrap_or("-"),
+                r["candidate_state"].as_str().unwrap_or(""),
+                r["support"].as_array().map_or(0, Vec::len),
+                r["refute"].as_array().map_or(0, Vec::len),
+                r["context"].as_array().map_or(0, Vec::len)
+            );
+            println!("    reason: {}", r["reason"].as_str().unwrap_or(""));
+        }
+        if explain {
+            let empty_arr: Vec<Value> = Vec::new();
+            for step in v["explain"].as_array().unwrap_or(&empty_arr) {
+                println!("  step: {}", step.as_str().unwrap_or(""));
             }
         }
     }
@@ -1406,5 +2269,1183 @@ fn cmd_fixture_p0b(args: &[String]) -> Result<()> {
     std::fs::write(codex.join("synthetic-p0b-second.jsonl"), P0B_CODEX_SECOND)
         .map_err(|e| err(format!("write fixture: {e}")))?;
     println!("wrote synthetic P0b fixtures to {}", out.display());
+    Ok(())
+}
+
+// ------------------------------------------------------- P0c-2 naming audit
+
+// Only synthetic names are used for rule work. Each tuple is
+// (parent directory, file basenames); project comes from the name itself.
+const NAMING_FIXTURE: &[(&str, &[&str])] = &[
+    ("multiple-splits", &["S18Task70BS01", "S18Task70SR02", "S18Task70DEP3"]),
+    ("marker-t", &["S14T3ProviderA5", "S14T3ReviewB7"]),
+    ("shared-prefix-tie", &["S813BoundaryGold23", "S813BoundarySilver24"]),
+    ("missing-suffix", &["S14T3ProviderA", "S14T3OtherB9"]),
+    ("collision-a", &["S18Task70BS01"]),
+    ("collision-b", &["S18Task70BS01"]),
+    ("cross-project", &["S18Task70BS01", "S19Task70BS01"]),
+];
+
+fn naming_fixture_content(sid: &str) -> String {
+    format!(
+        "{{\"type\":\"session\",\"version\":3,\"id\":\"{sid}\",\"timestamp\":\"2026-03-04T05:06:07.000Z\",\"cwd\":\"C:\\\\SYNTHETIC\\\\p0c2\",\"title\":\"synthetic naming fixture\",\"parentSession\":\"p0c2-parent\"}}\n{{\"type\":\"message\",\"id\":\"{sid}-e1\",\"parentId\":null,\"timestamp\":\"2026-03-04T05:06:08.000Z\",\"message\":{{\"role\":\"user\",\"content\":[{{\"type\":\"text\",\"text\":\"SYNTHETIC NAMING TOKEN\"}}]}}}}\n"
+    )
+}
+
+fn cmd_fixture_naming(args: &[String]) -> Result<()> {
+    let out = PathBuf::from(opt(args, "--out").ok_or_else(|| err("fixture-naming needs --out DIR"))?);
+    let omp = out.join("omp");
+    let codex = out.join("codex");
+    fs::create_dir_all(&omp).map_err(|e| err(format!("create {}: {e}", omp.display())))?;
+    fs::create_dir_all(&codex).map_err(|e| err(format!("create {}: {e}", codex.display())))?;
+    let mut written = 0usize;
+    for (parent, names) in NAMING_FIXTURE {
+        let dir = omp.join(parent);
+        fs::create_dir_all(&dir).map_err(|e| err(format!("create {}: {e}", dir.display())))?;
+        for name in *names {
+            let sid = format!("p0c2-{parent}-{name}");
+            let path = dir.join(format!("{name}.jsonl"));
+            fs::write(&path, naming_fixture_content(&sid))
+                .map_err(|e| err(format!("write {}: {e}", path.display())))?;
+            written += 1;
+        }
+    }
+    println!("wrote {written} synthetic P0c-2 naming fixtures to {}", out.display());
+    Ok(())
+}
+
+/// Build grammar inputs from the address index only. No raw bytes are read.
+fn naming_sources(idx: &Index) -> Result<Vec<SourceRef>> {
+    let mut session_by_file: std::collections::HashMap<u32, (String, String)> =
+        std::collections::HashMap::new();
+    for s in 0..idx.session_count {
+        let view = idx.session(s)?;
+        let session_id = view.id().to_string();
+        let span_anchor = idx
+            .event(view.header())
+            .map(|e| span_label(e.span()))
+            .unwrap_or_default();
+        session_by_file
+            .entry(view.file())
+            .or_insert((session_id, span_anchor));
+    }
+    let mut out = Vec::with_capacity(idx.file_count as usize);
+    for fid in 0..idx.file_count {
+        let f = idx.file(fid)?;
+        let path = f.path().to_string();
+        let (session_id, span_anchor) = session_by_file
+            .get(&fid)
+            .cloned()
+            .unwrap_or_else(|| (String::new(), String::new()));
+        out.push(SourceRef {
+            file_id: fid,
+            path,
+            provider: f.provider().label().to_string(),
+            session_id,
+            span_anchor,
+        });
+    }
+    Ok(out)
+}
+
+fn naming_evidence(s: &SourceRef, rule: &ase_naming::RuleInfo) -> Value {
+    json!({
+        "source": {
+            "file_id": s.file_id,
+            "path": s.path,
+            "provider": s.provider,
+            "session_id": s.session_id,
+            "span_anchor": s.span_anchor
+        },
+        "locator": format!("file.path:{}", s.path),
+        "rule": { "name": &rule.name, "version": &rule.version }
+    })
+}
+
+fn candidate_value(c: &ase_naming::Candidate) -> Value {
+    json!({
+        "project": &c.project,
+        "task": &c.task,
+        "role": &c.role,
+        "attempt": &c.attempt,
+        "split_rule": &c.split_rule
+    })
+}
+
+fn cmd_audit(args: &[String]) -> Result<()> {
+    let subject = args.first().map(String::as_str).unwrap_or("");
+    match subject {
+        "naming" => cmd_audit_naming(args),
+        "delegation" => cmd_audit_delegation(args),
+        "markers" => cmd_audit_markers(args),
+        _ => Err(err("audit needs a subject: naming|delegation|markers")),
+    }
+}
+
+fn cmd_audit_naming(args: &[String]) -> Result<()> {
+    // Deliberately open the address directly: this command never constructs a
+    // RawStore, opens a span, reads prose, or consults postings.
+    let idx = Index::open(&index_path(args))?;
+    let mut result = ase_naming::audit(&naming_sources(&idx)?);
+    if let Some(project) = opt(args, "--project") {
+        result.signals.retain(|s| match s.status {
+            Status::Parsed | Status::Ambiguous => {
+                s.candidates.iter().any(|c| c.project == project)
+            }
+            Status::Unparsed => s.basename.starts_with(&project),
+        });
+        result
+            .clusters
+            .retain(|c| c.project == project);
+        result.ties.retain(|t| t.candidates.iter().any(|c| c.project == project));
+        result.unparsed.retain(|u| u.basename.starts_with(&project));
+        result.collisions.retain(|c| {
+            c.left.starts_with(&project) || c.right.starts_with(&project)
+        });
+        result.coverage.names = result.signals.len();
+        result.coverage.parsed = result
+            .signals
+            .iter()
+            .filter(|s| s.status == Status::Parsed)
+            .count();
+        result.coverage.ambiguous = result
+            .signals
+            .iter()
+            .filter(|s| s.status == Status::Ambiguous)
+            .count();
+        result.coverage.unparsed = result.coverage.names
+            - result.coverage.parsed
+            - result.coverage.ambiguous;
+    }
+
+    let rule = &result.rule;
+    let coverage = &result.coverage;
+    let v = json!({
+        "command": "audit",
+        "subject": "naming",
+        "status": "ok",
+        "rule": {
+            "name": &rule.name,
+            "version": &rule.version,
+            "description": &rule.description,
+            "attempt_semantics": &rule.attempt_semantics,
+            "abstention": &rule.abstention
+        },
+        "source": {
+            "kind": "address_index_metadata",
+            "index": index_path(args).to_string_lossy(),
+            "fields": ["file.path", "file.id", "file.provider", "session.id", "session.header.span"],
+            "transcript_read": false,
+            "note": "Names come from indexed path metadata; this command does not open raw spans or prose."
+        },
+        "coverage": {
+            "names": coverage.names,
+            "parsed": coverage.parsed,
+            "ambiguous": coverage.ambiguous,
+            "unparsed": coverage.unparsed,
+            "parsed_ratio": if coverage.names == 0 {
+                0.0
+            } else {
+                coverage.parsed as f64 / coverage.names as f64
+            },
+            "denominator": "all indexed source file names in scope"
+        },
+        "clusters": result.clusters.iter().map(|c| json!({
+            "project": &c.project,
+            "parent": &c.parent,
+            "common_prefix": &c.common_prefix,
+            "names": c.names.iter().map(|n| json!({
+                "basename": &n.basename,
+                "task_key": format!("{}|{}|{}|{}", n.candidate.project, n.candidate.task, n.candidate.role, n.candidate.attempt),
+                "candidate": candidate_value(&n.candidate),
+                "evidence": naming_evidence(&n.source, rule)
+            })).collect::<Vec<Value>>()
+        })).collect::<Vec<Value>>(),
+        "ties": result.ties.iter().map(|t| json!({
+            "parent": &t.parent,
+            "basename": &t.basename,
+            "decision": t.decision,
+            "reason": &t.reason,
+            "candidates": t.candidates.iter().map(candidate_value).collect::<Vec<Value>>(),
+            "evidence": naming_evidence(&t.source, rule)
+        })).collect::<Vec<Value>>(),
+        "unparsed": result.unparsed.iter().map(|u| json!({
+            "parent": &u.parent,
+            "basename": &u.basename,
+            "reason": &u.reason,
+            "evidence": naming_evidence(&u.source, rule)
+        })).collect::<Vec<Value>>(),
+        "signals": result.signals.iter().map(|s| json!({
+            "basename": &s.basename,
+            "parent": &s.parent,
+            "status": format!("{:?}", s.status).to_lowercase(),
+            "reason": &s.reason,
+            "shared_prefix": &s.shared_prefix,
+            "sibling_count": s.sibling_count,
+            "candidates": s.candidates.iter().map(candidate_value).collect::<Vec<Value>>(),
+            "evidence": naming_evidence(&s.source, rule)
+        })).collect::<Vec<Value>>(),
+        "collisions": result.collisions.iter().map(|c| json!({
+            "kind": c.kind,
+            "left": &c.left,
+            "right": &c.right,
+            "note": &c.note
+        })).collect::<Vec<Value>>(),
+        "explain": if has(args, "--explain") {
+            vec![
+                "Read file.path, file.id, provider, session.id and session.header.span from the address index; no transcript, postings or model is touched.".to_string(),
+                "Grouped source names by parent directory and recorded the longest prefix shared with a sibling as cluster evidence.".to_string(),
+                "Parsed trailing digits as the attempt label, trailing letters as the role, then a `Task`/`T` marker or an admissible project/task digit boundary.".to_string(),
+                "An explicit marker is decisive; without one, every admissible boundary is retained and more than one candidate is reported as a tie with decision abstain.".to_string(),
+                "Attempt numbers are labels only: no chronology, newest attempt or ordering is inferred from them.".to_string(),
+                "Project and parent stay in every task key; cross-project and cross-parent collisions are reported rather than merged.".to_string(),
+            ]
+        } else {
+            Vec::<String>::new()
+        },
+        "guarantees": [
+            "Metadata-only audit: no raw span is opened and no prose is decoded.",
+            "Every parsed assertion carries the source path, session pointer and the rule name/version.",
+            "Ambiguous and unparsed names are retained with reasons and are never promoted to task keys.",
+            "No cross-project or cross-parent merge; ties are abstentions, not assignments."
+        ]
+    });
+    emit(&v, args);
+    Ok(())
+}
+
+// --------------------------------------------- P0c-3 parentSession delegation
+
+const DELEGATION_TS: &str = "2026-03-05T06:07:08.000Z";
+
+// Only synthetic ids and paths are used. Tuples are
+// (relative path under omp/, explicit session id or None, declared parent or None).
+// A `None` id is a path-derived OMP session: the decoder reads the parent id
+// from the sidecar directory name, recorded as a path observation.
+const DELEGATION_FIXTURE: &[(&str, Option<&str>, Option<&str>)] = &[
+    ("unique/del-parent-unique.jsonl", Some("del-parent-unique"), None),
+    ("unique/del-child-unique.jsonl", Some("del-child-unique"), Some("del-parent-unique")),
+    ("missing/del-child-missing.jsonl", Some("del-child-missing"), Some("del-parent-absent")),
+    // Adjacent files share one id: the index's first-match parent_idx must not select one.
+    ("ambiguous/del-parent-dup-a.jsonl", Some("del-parent-dup"), None),
+    ("ambiguous/del-parent-dup-b.jsonl", Some("del-parent-dup"), None),
+    ("ambiguous/del-child-ambiguous.jsonl", Some("del-child-ambiguous"), Some("del-parent-dup")),
+    (
+        "path/2026-01-01_abcdefghijklmnopqrstuvwxyz1234/del-path-child.jsonl",
+        None,
+        None,
+    ),
+    (
+        "path/del-path-parent.jsonl",
+        Some("2026-01-01_abcdefghijklmnopqrstuvwxyz1234"),
+        None,
+    ),
+];
+
+fn delegation_session_line(id: &str, parent: Option<&str>) -> String {
+    let parent_field = parent
+        .map(|p| format!(",\"parentSession\":\"{p}\""))
+        .unwrap_or_default();
+    format!(
+        "{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"{DELEGATION_TS}\",\"cwd\":\"C:\\\\SYNTHETIC\\\\p0c3\",\"title\":\"synthetic delegation fixture\"{parent_field}}}\n"
+    )
+}
+
+fn delegation_message_line(sid: &str) -> String {
+    format!(
+        "{{\"type\":\"message\",\"id\":\"{sid}-e1\",\"parentId\":null,\"timestamp\":\"{DELEGATION_TS}\",\"message\":{{\"role\":\"user\",\"content\":[{{\"type\":\"text\",\"text\":\"SYNTHETIC DELEGATION TOKEN\"}}]}}}}\n"
+    )
+}
+
+fn cmd_fixture_delegation(args: &[String]) -> Result<()> {
+    let out = PathBuf::from(
+        opt(args, "--out").ok_or_else(|| err("fixture-delegation needs --out DIR"))?,
+    );
+    let omp = out.join("omp");
+    let codex = out.join("codex");
+    fs::create_dir_all(&omp).map_err(|e| err(format!("create {}: {e}", omp.display())))?;
+    fs::create_dir_all(&codex).map_err(|e| err(format!("create {}: {e}", codex.display())))?;
+    let mut written = 0usize;
+    for &(rel, id, parent) in DELEGATION_FIXTURE {
+        let path = omp.join(rel);
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir).map_err(|e| err(format!("create {}: {e}", dir.display())))?;
+        }
+        let sid = id.unwrap_or_else(|| {
+            path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("synthetic-path-derived")
+        });
+        let mut content = String::new();
+        if let Some(id) = id {
+            content.push_str(&delegation_session_line(id, parent));
+        }
+        content.push_str(&delegation_message_line(sid));
+        fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
+        written += 1;
+    }
+    println!(
+        "wrote {written} synthetic P0c-3 delegation fixtures to {}",
+        out.display()
+    );
+    Ok(())
+}
+
+/// Build delegation inputs from indexed session metadata only. No raw bytes
+/// are read; the header span is a locator, not decoded evidence.
+fn delegation_inputs(idx: &Index) -> Result<Vec<ase_delegation::SessionInput>> {
+    use ase_delegation::{Declaration, ObservationKind, SessionInput, SessionRef};
+
+    let mut out = Vec::with_capacity(idx.session_count as usize);
+    for sidx in 0..idx.session_count {
+        let s = idx.session(sidx)?;
+        let f = idx.file(s.file())?;
+        let path = f.path().to_string();
+        let provider = f.provider().label().to_string();
+        let header_span = span_label(idx.event(s.header())?.span());
+        let declared = s.parent_id();
+        let declaration = if declared.is_empty() {
+            None
+        } else if s.path_derived() {
+            let path_segment = Path::new(&path)
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .map(str::to_string);
+            Some(Declaration {
+                declared_id: declared.to_string(),
+                kind: ObservationKind::PathDerived,
+                field: "source.path.parent_directory",
+                payload_span: None,
+                path_segment,
+            })
+        } else {
+            Some(Declaration {
+                declared_id: declared.to_string(),
+                kind: ObservationKind::PayloadField,
+                field: if provider == "codex" {
+                    "codex.session_meta.parent"
+                } else {
+                    "omp.parentSession"
+                },
+                payload_span: Some(header_span.clone()),
+                path_segment: None,
+            })
+        };
+        out.push(SessionInput {
+            session: SessionRef {
+                session_idx: sidx,
+                id: s.id().to_string(),
+                file_id: s.file(),
+                path,
+                provider,
+                header_span,
+            },
+            declaration,
+        });
+    }
+    Ok(out)
+}
+
+fn delegation_session_value(s: &ase_delegation::SessionRef) -> Value {
+    json!({
+        "session_idx": s.session_idx,
+        "id": &s.id,
+        "file_id": s.file_id,
+        "path": &s.path,
+        "provider": &s.provider,
+        "header_span": &s.header_span
+    })
+}
+
+fn cmd_audit_delegation(args: &[String]) -> Result<()> {
+    // Same metadata-only seam as `audit naming`: no RawStore, no span read,
+    // no postings and no model.
+    let idx = Index::open(&index_path(args))?;
+    let result = ase_delegation::audit(&delegation_inputs(&idx)?);
+    let rule = &result.rule;
+    let rule_value = json!({ "name": &rule.name, "version": &rule.version });
+    let edges = result
+        .edges
+        .iter()
+        .map(|e| {
+            json!({
+                "predicate": "delegated_from",
+                "from": delegation_session_value(&e.from),
+                "declaration": {
+                    "declared_id": &e.declaration.declared_id,
+                    "observation": e.declaration.kind.label(),
+                    "field": e.declaration.field,
+                    "payload_span": &e.declaration.payload_span,
+                    "path_segment": &e.declaration.path_segment
+                },
+                "status": e.status.label(),
+                "reason": e.reason,
+                "target": e.target.as_ref().map(delegation_session_value),
+                "candidates": e.candidates.iter().map(delegation_session_value).collect::<Vec<Value>>(),
+                "evidence": {
+                    "declaration_anchor": e.declaration.payload_span.clone().unwrap_or_else(|| e.from.header_span.clone()),
+                    "target_span": e.target.as_ref().map(|t| t.header_span.clone()),
+                    "note": "A header span locates the source file; a path-derived declaration has no payload span and no id text is claimed inside the payload."
+                },
+                "rule": rule_value.clone(),
+                "task_key": Value::Null,
+                "assigned_to": Value::Null
+            })
+        })
+        .collect::<Vec<Value>>();
+
+    let v = json!({
+        "command": "audit",
+        "subject": "delegation",
+        "status": "ok",
+        "rule": {
+            "name": &rule.name,
+            "version": &rule.version,
+            "domain": &rule.domain,
+            "abstention": &rule.abstention,
+            "task_boundary": &rule.task_boundary
+        },
+        "source": {
+            "kind": "address_index_metadata",
+            "index": index_path(args).to_string_lossy(),
+            "fields": ["session.id", "session.parent_id", "session.path_derived", "session.header.span", "file.path", "file.id", "file.provider"],
+            "transcript_read": false,
+            "note": "Declared parent ids come from indexed session metadata; no raw span is opened, no prose is decoded and no model is called."
+        },
+        "counts": {
+            "sessions": result.sessions,
+            "declarations": result.declarations,
+            "linked": result.linked,
+            "unlinked_absent": result.unlinked_absent,
+            "unlinked_ambiguous": result.unlinked_ambiguous,
+            "unlinked_self": result.unlinked_self,
+            "without_parent": result.without_parent,
+            "payload_declarations": result.payload_declarations,
+            "path_declarations": result.path_declarations
+        },
+        "edges": edges,
+        "sessions_without_parent": result.sessions_without_parent.iter().map(delegation_session_value).collect::<Vec<Value>>(),
+        "task_assignment": "none",
+        "task_key": Value::Null,
+        "explain": if has(args, "--explain") {
+            vec![
+                "Read session.id, session.parent_id, session.path_derived, the session header span and file path/provider from the address index; no raw bytes, prose, postings or model are touched.".to_string(),
+                "Payload-field and path-derived declarations are recorded separately: a header span locates the file but never proves that the declared id text is in a payload.".to_string(),
+                "A target is accepted only when exactly one indexed session id equals the declared id byte-for-byte; file order, path proximity and the index's first-match parent_idx are not used to choose a target.".to_string(),
+                "Zero matches -> unlinked_absent; more than one -> unlinked_ambiguous with every candidate retained; a self reference -> unlinked_self. Candidate order is enumeration order only and never selects a target.".to_string(),
+                "Every edge carries the rule name/version, both endpoint locators and task_key/assigned_to set to null: a parent declaration alone is a delegation edge, not a task assignment.".to_string()
+            ]
+        } else {
+            Vec::<String>::new()
+        },
+        "guarantees": [
+            "Metadata-only: no raw span is opened, no prose is decoded and no model is called.",
+            "Unique exact-id targets are linked with inspectable source and target locators plus rule name/version.",
+            "Missing, multiple or self targets stay unlinked with all candidates retained; no file-order or path-proximity tie-break exists.",
+            "Payload and path observations are recorded separately, with no payload span claimed for a path-derived id.",
+            "A parent declaration never produces a TaskKey or an assigned_to edge."
+        ]
+    });
+    emit(&v, args);
+    Ok(())
+}
+
+// ------------------------------------------------------- P0c-4 marker audit
+
+// Synthetic markers only. One OMP session carries allowlisted user/assistant
+// text plus deliberately marker-bearing thinking, tool output and call
+// arguments that the allowlist must never project as prose.
+const MARKER_FIXTURE_LINES: &[&str] = &[
+    r#"{"type":"session","version":3,"id":"marker-fixture-session","timestamp":"2026-03-06T07:08:09.000Z","cwd":"C:\\SYNTHETIC\\p0c4","title":"synthetic marker fixture"}"#,
+    r#"{"type":"message","id":"marker-e1","parentId":null,"timestamp":"2026-03-06T07:08:10.000Z","message":{"role":"user","content":[{"type":"text","text":"Please implement task_id=SYN-A1 and task_id=SYN-A2 in the parser."}]}}"#,
+    r#"{"type":"message","id":"marker-e2","parentId":null,"timestamp":"2026-03-06T07:08:11.000Z","message":{"role":"assistant","content":[{"type":"text","text":"I will work on task_id=SYN-A1. Please implement task_id=SYN-A1 again."}]}}"#,
+    r#"{"type":"message","id":"marker-e3","parentId":null,"timestamp":"2026-03-06T07:08:12.000Z","message":{"role":"user","content":[{"type":"text","text":"Earlier we mentioned task_id=SYN-M1 for context only."}]}}"#,
+    r#"{"type":"message","id":"marker-e4","parentId":null,"timestamp":"2026-03-06T07:08:13.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Implement task_id=SYN-X1 but note task_id=SYN-X1 for reference."}]}}"#,
+    r#"{"type":"message","id":"marker-e5","parentId":null,"timestamp":"2026-03-06T07:08:14.000Z","message":{"role":"user","content":[{"type":"text","text":"task_id=SYN-U1"}]}}"#,
+    r#"{"type":"message","id":"marker-e6","parentId":null,"timestamp":"2026-03-06T07:08:15.000Z","message":{"role":"assistant","content":[{"type":"thinking","text":"task_id=SYN-THINK assigned here"},{"type":"text","text":"Please implement task_id=SYN-A3."}]}}"#,
+    r#"{"type":"message","id":"marker-e7","parentId":null,"timestamp":"2026-03-06T07:08:16.000Z","message":{"role":"assistant","content":[{"type":"toolCall","name":"synthetic_tool","args":"{\"task_id\":\"SYN-CALL\",\"mode\":1}"}]}}"#,
+    r#"{"type":"message","id":"marker-e8","parentId":null,"timestamp":"2026-03-06T07:08:17.000Z","message":{"role":"toolResult","toolCallId":"marker-call","content":[{"type":"text","text":"tool output only: task_id=SYN-TOOL assigned here"}]}}"#,
+];
+
+// ------------------------------------------------ P0c-5 resolve fixture
+
+const RESOLVE_TS: &str = "2026-03-07T08:09:10.000Z";
+
+struct ResolveFixtureFile {
+    rel: &'static str,
+    id: &'static str,
+    parent: Option<&'static str>,
+    messages: &'static [(&'static str, &'static str)],
+}
+
+// Synthetic only. Each case isolates one reconciliation outcome:
+// consistent naming+marker, a cross-layer conflict, naming-only, a multi-ID
+// session, the same token in two projects, marker-only, mention-only and a
+// parentSession pair without a task grammar.
+const RESOLVE_FIXTURE: &[ResolveFixtureFile] = &[
+    ResolveFixtureFile {
+        rel: "p0c5/S10Task101Alpha1.jsonl",
+        id: "fx-101-alpha",
+        parent: None,
+        messages: &[("user", "Please implement task_id=101 in the parser.")],
+    },
+    ResolveFixtureFile {
+        rel: "p0c5/S10Task102Beta1.jsonl",
+        id: "fx-102-beta",
+        parent: None,
+        messages: &[(
+            "assistant",
+            "Please implement task_id=999 for this change.",
+        )],
+    },
+    ResolveFixtureFile {
+        rel: "p0c5/S10Task103Gamma1.jsonl",
+        id: "fx-103-gamma-1",
+        parent: None,
+        messages: &[("assistant", "Working on the naming grammar only.")],
+    },
+    ResolveFixtureFile {
+        rel: "p0c5/S10Task103Gamma3.jsonl",
+        id: "fx-103-gamma-3",
+        parent: None,
+        messages: &[("user", "Same task, later attempt label.")],
+    },
+    ResolveFixtureFile {
+        rel: "p0c5/S10Task108Eta1.jsonl",
+        id: "fx-108-eta",
+        parent: None,
+        messages: &[(
+            "user",
+            "Please implement task_id=108 and task_id=777 as separate follow-ups.",
+        )],
+    },
+    ResolveFixtureFile {
+        rel: "p0c5/S20Task55Gold1.jsonl",
+        id: "fx-55-s20",
+        parent: None,
+        messages: &[("user", "Implement task_id=55 for project S20.")],
+    },
+    ResolveFixtureFile {
+        rel: "p0c5/S21Task55Gold2.jsonl",
+        id: "fx-55-s21",
+        parent: None,
+        messages: &[("assistant", "Implement task_id=55 for project S21.")],
+    },
+    ResolveFixtureFile {
+        rel: "p0c5/session-notes.jsonl",
+        id: "fx-notes",
+        parent: None,
+        messages: &[(
+            "user",
+            "Please implement task_id=555, but the filename has no grammar.",
+        )],
+    },
+    ResolveFixtureFile {
+        rel: "p0c5/session-mention.jsonl",
+        id: "fx-mention",
+        parent: None,
+        messages: &[(
+            "user",
+            "Earlier we mentioned task_id=666 for reference only.",
+        )],
+    },
+    ResolveFixtureFile {
+        rel: "p0c5/syn-parent-root.jsonl",
+        id: "syn-parent-root",
+        parent: None,
+        messages: &[("user", "root synthetic session")],
+    },
+    ResolveFixtureFile {
+        rel: "p0c5/syn-parent-child.jsonl",
+        id: "syn-parent-child",
+        parent: Some("syn-parent-root"),
+        messages: &[("user", "delegated synthetic session")],
+    },
+];
+
+fn resolve_session_line(id: &str, parent: Option<&str>) -> String {
+    let parent_field = parent
+        .map(|value| format!(",\"parentSession\":\"{value}\""))
+        .unwrap_or_default();
+    format!(
+        "{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"{RESOLVE_TS}\",\"cwd\":\"C:\\\\SYNTHETIC\\\\p0c5\",\"title\":\"synthetic resolve fixture\"{parent_field}}}\n"
+    )
+}
+
+fn resolve_message_line(sid: &str, ordinal: usize, role: &str, text: &str) -> String {
+    format!(
+        "{{\"type\":\"message\",\"id\":\"{sid}-e{ordinal}\",\"parentId\":null,\"timestamp\":\"{RESOLVE_TS}\",\"message\":{{\"role\":\"{role}\",\"content\":[{{\"type\":\"text\",\"text\":\"{text}\"}}]}}}}\n"
+    )
+}
+
+fn cmd_fixture_resolve(args: &[String]) -> Result<()> {
+    let out = PathBuf::from(
+        opt(args, "--out").ok_or_else(|| err("fixture-resolve needs --out DIR"))?,
+    );
+    let omp = out.join("omp");
+    let codex = out.join("codex");
+    fs::create_dir_all(&omp).map_err(|e| err(format!("create {}: {e}", omp.display())))?;
+    fs::create_dir_all(&codex).map_err(|e| err(format!("create {}: {e}", codex.display())))?;
+    for entry in RESOLVE_FIXTURE {
+        let path = omp.join(entry.rel);
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir).map_err(|e| err(format!("create {}: {e}", dir.display())))?;
+        }
+        let mut content = resolve_session_line(entry.id, entry.parent);
+        for (ordinal, (role, text)) in entry.messages.iter().enumerate() {
+            content.push_str(&resolve_message_line(entry.id, ordinal + 1, role, text));
+        }
+        fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
+    }
+    println!(
+        "wrote {} synthetic P0c-5 resolve fixtures to {}",
+        RESOLVE_FIXTURE.len(),
+        out.display()
+    );
+    Ok(())
+}
+
+// -------------------------------------------- P0c-9 dispatch fixture
+
+const DISPATCH_TS: &str = "2026-03-08T09:10:11.000Z";
+const DISPATCH_PARENT_SESSION: &str = "dispatch-fixture-parent";
+
+const D_410: &str = "11111111-1111-4111-8111-111111111111";
+const D_10410: &str = "22222222-2222-4222-8222-222222222222";
+const D_ONLY: &str = "33333333-3333-4333-8333-333333333333";
+const D_CONFLICT: &str = "44444444-4444-4444-8444-444444444444";
+const D_MISSING: &str = "55555555-5555-4555-8555-555555555555";
+const D_DUP_PARENT: &str = "66666666-6666-4666-8666-666666666666";
+const D_DUP_CHILD: &str = "77777777-7777-4777-8777-777777777777";
+const D_WRONG: &str = "88888888-8888-4888-8888-888888888888";
+const D_MISMATCH: &str = "99999999-9999-4999-8999-999999999999";
+const D_ORPHAN: &str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const D_COMP_A: &str = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const D_COMP_B: &str = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const D_INVALID: &str = "not-a-runtime-uuid";
+
+struct DispatchFixtureParent {
+    dispatch_id: &'static str,
+    parent_session_id: &'static str,
+    parent_tool_call_id: Option<&'static str>,
+    spawn_index: u32,
+    project: &'static str,
+    task: &'static str,
+    attempt: &'static str,
+}
+
+struct DispatchFixtureChild {
+    dispatch_id: &'static str,
+    session_id: &'static str,
+}
+
+struct DispatchFixtureFile {
+    rel: &'static str,
+    session_id: &'static str,
+    messages: &'static [(&'static str, &'static str)],
+    parents: &'static [DispatchFixtureParent],
+    children: &'static [DispatchFixtureChild],
+    raw_lines: &'static [&'static str],
+}
+
+// Synthetic only, shaped exactly like the native OMP v19.0.0 P0c-8
+// records. The parent journal carries positive, rejected and competing
+// claims; each child journal is the only place its link is valid.
+const DISPATCH_PARENTS: &[DispatchFixtureParent] = &[
+    DispatchFixtureParent {
+        dispatch_id: D_410,
+        parent_session_id: DISPATCH_PARENT_SESSION,
+        parent_tool_call_id: Some("call-410"),
+        spawn_index: 0,
+        project: "S30",
+        task: "410",
+        attempt: "1",
+    },
+    DispatchFixtureParent {
+        dispatch_id: D_10410,
+        parent_session_id: DISPATCH_PARENT_SESSION,
+        parent_tool_call_id: Some("call-10410"),
+        spawn_index: 1,
+        project: "S30",
+        task: "10410",
+        attempt: "1",
+    },
+    DispatchFixtureParent {
+        dispatch_id: D_ONLY,
+        parent_session_id: DISPATCH_PARENT_SESSION,
+        parent_tool_call_id: Some("call-only"),
+        spawn_index: 2,
+        project: "SYN-PROJECT",
+        task: "SYN-DISPATCH-ONLY",
+        attempt: "attempt-3",
+    },
+    DispatchFixtureParent {
+        dispatch_id: D_CONFLICT,
+        parent_session_id: DISPATCH_PARENT_SESSION,
+        parent_tool_call_id: Some("call-conflict"),
+        spawn_index: 3,
+        project: "SYN-PROJECT",
+        task: "SYN-CONFLICT",
+        attempt: "1",
+    },
+    DispatchFixtureParent {
+        dispatch_id: D_MISSING,
+        parent_session_id: DISPATCH_PARENT_SESSION,
+        parent_tool_call_id: Some("call-missing"),
+        spawn_index: 4,
+        project: "SYN-PROJECT",
+        task: "SYN-MISSING",
+        attempt: "1",
+    },
+    DispatchFixtureParent {
+        dispatch_id: D_DUP_PARENT,
+        parent_session_id: DISPATCH_PARENT_SESSION,
+        parent_tool_call_id: Some("call-dup-parent-a"),
+        spawn_index: 5,
+        project: "SYN-PROJECT",
+        task: "SYN-DUP-PARENT",
+        attempt: "1",
+    },
+    DispatchFixtureParent {
+        dispatch_id: D_DUP_PARENT,
+        parent_session_id: DISPATCH_PARENT_SESSION,
+        parent_tool_call_id: Some("call-dup-parent-b"),
+        spawn_index: 6,
+        project: "SYN-PROJECT",
+        task: "SYN-DUP-PARENT",
+        attempt: "1",
+    },
+    DispatchFixtureParent {
+        dispatch_id: D_DUP_CHILD,
+        parent_session_id: DISPATCH_PARENT_SESSION,
+        parent_tool_call_id: Some("call-dup-child"),
+        spawn_index: 7,
+        project: "SYN-PROJECT",
+        task: "SYN-DUP-CHILD",
+        attempt: "1",
+    },
+    DispatchFixtureParent {
+        dispatch_id: D_WRONG,
+        parent_session_id: DISPATCH_PARENT_SESSION,
+        parent_tool_call_id: Some("call-wrong"),
+        spawn_index: 8,
+        project: "SYN-PROJECT",
+        task: "SYN-WRONG-CHILD",
+        attempt: "1",
+    },
+    DispatchFixtureParent {
+        dispatch_id: D_MISMATCH,
+        parent_session_id: "ghost-parent-session",
+        parent_tool_call_id: Some("call-mismatch"),
+        spawn_index: 9,
+        project: "SYN-PROJECT",
+        task: "SYN-MISMATCH-PARENT",
+        attempt: "1",
+    },
+    DispatchFixtureParent {
+        dispatch_id: D_COMP_A,
+        parent_session_id: DISPATCH_PARENT_SESSION,
+        parent_tool_call_id: Some("call-comp-a"),
+        spawn_index: 10,
+        project: "SYN-PROJECT-A",
+        task: "SYN-COMPETING",
+        attempt: "1",
+    },
+    DispatchFixtureParent {
+        dispatch_id: D_COMP_B,
+        parent_session_id: DISPATCH_PARENT_SESSION,
+        parent_tool_call_id: Some("call-comp-b"),
+        spawn_index: 11,
+        project: "SYN-PROJECT-B",
+        task: "SYN-COMPETING",
+        attempt: "1",
+    },
+    DispatchFixtureParent {
+        dispatch_id: D_INVALID,
+        parent_session_id: DISPATCH_PARENT_SESSION,
+        parent_tool_call_id: Some("call-malformed"),
+        spawn_index: 12,
+        project: "SYN-PROJECT",
+        task: "SYN-MALFORMED",
+        attempt: "1",
+    },
+];
+
+const DISPATCH_RAW_LINES: &[&str] = &[
+    r#"{"type":"custom","timestamp":"2026-03-08T09:10:11.000Z","customType":"task_dispatch_v1","data":{"dispatch_id":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","parent_session_id":"dispatch-fixture-parent","spawn_index":13,"project_id":"SYN-PROJECT","attempt_id":"1"}}"#,
+];
+
+const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
+    DispatchFixtureFile {
+        rel: "p0c9/parent-root.jsonl",
+        session_id: DISPATCH_PARENT_SESSION,
+        messages: &[("user", "dispatch fixture root session")],
+        parents: DISPATCH_PARENTS,
+        children: &[],
+        raw_lines: DISPATCH_RAW_LINES,
+    },
+    DispatchFixtureFile {
+        rel: "p0c9/S30Task410Alpha1.jsonl",
+        session_id: "dispatch-child-410",
+        messages: &[("assistant", "Tracked child for the first shared-suffix task.")],
+        parents: &[],
+        children: &[DispatchFixtureChild {
+            dispatch_id: D_410,
+            session_id: "dispatch-child-410",
+        }],
+        raw_lines: &[],
+    },
+    DispatchFixtureFile {
+        rel: "p0c9/S30Task10410Beta1.jsonl",
+        session_id: "dispatch-child-10410",
+        messages: &[("assistant", "Tracked child for the second shared-suffix task.")],
+        parents: &[],
+        children: &[DispatchFixtureChild {
+            dispatch_id: D_10410,
+            session_id: "dispatch-child-10410",
+        }],
+        raw_lines: &[],
+    },
+    DispatchFixtureFile {
+        rel: "p0c9/TrackedOnlyGamma2.jsonl",
+        session_id: "dispatch-child-only",
+        messages: &[("assistant", "Tracked child without a name-grammar key.")],
+        parents: &[],
+        children: &[DispatchFixtureChild {
+            dispatch_id: D_ONLY,
+            session_id: "dispatch-child-only",
+        }],
+        raw_lines: &[],
+    },
+    DispatchFixtureFile {
+        rel: "p0c9/S99Task999Delta3.jsonl",
+        session_id: "dispatch-child-conflict",
+        messages: &[("assistant", "Child whose file name disagrees with its dispatch identity.")],
+        parents: &[],
+        children: &[DispatchFixtureChild {
+            dispatch_id: D_CONFLICT,
+            session_id: "dispatch-child-conflict",
+        }],
+        raw_lines: &[],
+    },
+    DispatchFixtureFile {
+        rel: "p0c9/DupParentZeta1.jsonl",
+        session_id: "dispatch-child-dup-parent",
+        messages: &[("assistant", "Child for a duplicated parent claim.")],
+        parents: &[],
+        children: &[DispatchFixtureChild {
+            dispatch_id: D_DUP_PARENT,
+            session_id: "dispatch-child-dup-parent",
+        }],
+        raw_lines: &[],
+    },
+    DispatchFixtureFile {
+        rel: "p0c9/DupChildEta1.jsonl",
+        session_id: "dispatch-child-dup-child",
+        messages: &[("assistant", "Child carrying a duplicated link.")],
+        parents: &[],
+        children: &[
+            DispatchFixtureChild {
+                dispatch_id: D_DUP_CHILD,
+                session_id: "dispatch-child-dup-child",
+            },
+            DispatchFixtureChild {
+                dispatch_id: D_DUP_CHILD,
+                session_id: "dispatch-child-dup-child",
+            },
+        ],
+        raw_lines: &[],
+    },
+    DispatchFixtureFile {
+        rel: "p0c9/WrongChildTheta1.jsonl",
+        session_id: "dispatch-child-wrong",
+        messages: &[("assistant", "Child whose link names another session.")],
+        parents: &[],
+        children: &[DispatchFixtureChild {
+            dispatch_id: D_WRONG,
+            session_id: "ghost-session",
+        }],
+        raw_lines: &[],
+    },
+    DispatchFixtureFile {
+        rel: "p0c9/MismatchParentIota1.jsonl",
+        session_id: "dispatch-child-mismatch",
+        messages: &[("assistant", "Child whose parent record names another session.")],
+        parents: &[],
+        children: &[DispatchFixtureChild {
+            dispatch_id: D_MISMATCH,
+            session_id: "dispatch-child-mismatch",
+        }],
+        raw_lines: &[],
+    },
+    DispatchFixtureFile {
+        rel: "p0c9/OrphanChildKappa1.jsonl",
+        session_id: "dispatch-child-orphan",
+        messages: &[("assistant", "Child carrying a link with no parent record.")],
+        parents: &[],
+        children: &[DispatchFixtureChild {
+            dispatch_id: D_ORPHAN,
+            session_id: "dispatch-child-orphan",
+        }],
+        raw_lines: &[],
+    },
+    DispatchFixtureFile {
+        rel: "p0c9/CompetingChildLambda1.jsonl",
+        session_id: "dispatch-child-competing",
+        messages: &[("assistant", "Child claimed by two dispatch identities.")],
+        parents: &[],
+        children: &[
+            DispatchFixtureChild {
+                dispatch_id: D_COMP_A,
+                session_id: "dispatch-child-competing",
+            },
+            DispatchFixtureChild {
+                dispatch_id: D_COMP_B,
+                session_id: "dispatch-child-competing",
+            },
+        ],
+        raw_lines: &[],
+    },
+    DispatchFixtureFile {
+        rel: "p0c9/S40Task888Legacy1.jsonl",
+        session_id: "dispatch-legacy-child",
+        messages: &[(
+            "user",
+            "Please implement task_id=888 in the parser without dispatch tracking.",
+        )],
+        parents: &[],
+        children: &[],
+        raw_lines: &[],
+    },
+];
+
+fn dispatch_session_line(id: &str) -> String {
+    format!(
+        "{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"{DISPATCH_TS}\",\"cwd\":\"C:\\\\SYNTHETIC\\\\p0c9\",\"title\":\"synthetic dispatch fixture\"}}\n"
+    )
+}
+
+fn dispatch_parent_line(row: &DispatchFixtureParent) -> String {
+    let mut data = json!({
+        "dispatch_id": row.dispatch_id,
+        "parent_session_id": row.parent_session_id,
+        "spawn_index": row.spawn_index,
+        "project_id": row.project,
+        "task_id": row.task,
+        "attempt_id": row.attempt,
+    });
+    if let Some(tool_call_id) = row.parent_tool_call_id {
+        data["parent_tool_call_id"] = json!(tool_call_id);
+    }
+    format!(
+        "{}\n",
+        json!({
+            "type": "custom",
+            "timestamp": DISPATCH_TS,
+            "customType": "task_dispatch_v1",
+            "data": data
+        })
+    )
+}
+
+fn dispatch_child_line(row: &DispatchFixtureChild) -> String {
+    format!(
+        "{}\n",
+        json!({
+            "type": "custom",
+            "timestamp": DISPATCH_TS,
+            "customType": "task_dispatch_child_v1",
+            "data": {
+                "dispatch_id": row.dispatch_id,
+                "session_id": row.session_id
+            }
+        })
+    )
+}
+
+fn cmd_fixture_dispatch(args: &[String]) -> Result<()> {
+    let out = PathBuf::from(
+        opt(args, "--out").ok_or_else(|| err("fixture-dispatch needs --out DIR"))?,
+    );
+    let omp = out.join("omp");
+    let codex = out.join("codex");
+    fs::create_dir_all(&omp).map_err(|e| err(format!("create {}: {e}", omp.display())))?;
+    fs::create_dir_all(&codex).map_err(|e| err(format!("create {}: {e}", codex.display())))?;
+    for entry in DISPATCH_FIXTURE {
+        let path = omp.join(entry.rel);
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir).map_err(|e| err(format!("create {}: {e}", dir.display())))?;
+        }
+        let mut content = dispatch_session_line(entry.session_id);
+        for parent in entry.parents {
+            content.push_str(&dispatch_parent_line(parent));
+        }
+        for child in entry.children {
+            content.push_str(&dispatch_child_line(child));
+        }
+        for raw in entry.raw_lines {
+            content.push_str(raw);
+            content.push('\n');
+        }
+        for (ordinal, (role, text)) in entry.messages.iter().enumerate() {
+            content.push_str(&resolve_message_line(entry.session_id, ordinal + 1, role, text));
+        }
+        fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
+    }
+    println!(
+        "wrote {} synthetic P0c-9 dispatch fixtures to {}",
+        DISPATCH_FIXTURE.len(),
+        out.display()
+    );
+    Ok(())
+}
+
+fn cmd_fixture_markers(args: &[String]) -> Result<()> {
+    let out = PathBuf::from(
+        opt(args, "--out").ok_or_else(|| err("fixture-markers needs --out DIR"))?,
+    );
+    let omp = out.join("omp");
+    let codex = out.join("codex");
+    fs::create_dir_all(&omp).map_err(|e| err(format!("create {}: {e}", omp.display())))?;
+    fs::create_dir_all(&codex).map_err(|e| err(format!("create {}: {e}", codex.display())))?;
+    let mut content = String::new();
+    for line in MARKER_FIXTURE_LINES {
+        content.push_str(line);
+        content.push('\n');
+    }
+    let path = omp.join("synthetic-p0c4-markers.jsonl");
+    fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
+    println!(
+        "wrote {} synthetic P0c-4 marker fixture lines to {}",
+        MARKER_FIXTURE_LINES.len(),
+        out.display()
+    );
+    Ok(())
+}
+
+/// Read allowlisted prose blocks from one published generation, re-derive each
+/// block from raw bytes at its pinned span, and emit marker observations only
+/// after the span hash and block digest both verify. No prose is emitted.
+fn cmd_audit_markers(args: &[String]) -> Result<()> {
+    let (idx, store, published) = require_publication(args)?;
+    let VerifiedProse {
+        blocks_total,
+        excluded_role_blocks,
+        unverified_blocks,
+        texts,
+        kept,
+    } = verified_prose(&idx, &store, &published)?;
+
+    let result = ase_markers::audit(&texts);
+    let rule = &result.rule;
+    let rule_value = json!({
+        "name": &rule.name, "version": &rule.version, "matcher": &rule.matcher
+    });
+    let observations = result
+        .observations
+        .iter()
+        .map(|o| {
+            let b = &kept[o.block_index];
+            let reopen = format!(
+                "ase open --event {} --selector {} --generation {} --index {}",
+                b.event,
+                b.selector,
+                published.generation,
+                index_path(args).display()
+            );
+            json!({
+                "value": &o.value,
+                "usage": o.usage.label(),
+                "reason": o.reason,
+                "assignment_cue": &o.assignment_cue,
+                "mention_cue": &o.mention_cue,
+                "occurrence_in_block": o.occurrence_in_block,
+                "char_start": o.char_start,
+                "char_end": o.char_end,
+                "evidence": {
+                    "generation": &published.generation,
+                    "event": b.event,
+                    "span": span_label(b.span),
+                    "selector": &b.selector,
+                    "block_hash": &b.block_hash,
+                    "role": &b.role,
+                    "session_local": b.session_local,
+                    "parent_idx": b.parent_idx,
+                    "span_hash_match": true,
+                    "block_digest_match": true,
+                    "reopen": reopen,
+                    "note": "Prose is re-derived from raw bytes at the pinned span by the versioned selector; it is never stored or emitted by this audit."
+                },
+                "rule": rule_value.clone(),
+                "task_key": Value::Null,
+                "assigned_to": Value::Null,
+                "session_assignment": Value::Null
+            })
+        })
+        .collect::<Vec<Value>>();
+    let distinct = result
+        .observations
+        .iter()
+        .map(|o| o.value.clone())
+        .collect::<std::collections::BTreeSet<String>>()
+        .len();
+
+    let v = json!({
+        "command": "audit",
+        "subject": "markers",
+        "status": "ok",
+        "rule": {
+            "name": &rule.name,
+            "version": &rule.version,
+            "matcher": &rule.matcher,
+            "domain": &rule.domain,
+            "abstention": &rule.abstention,
+            "task_boundary": &rule.task_boundary
+        },
+        "source": {
+            "kind": "published_prose_blocks",
+            "generation": &published.generation,
+            "index": index_path(args).to_string_lossy(),
+            "fields": ["blocks.generation", "blocks.event_idx", "blocks.selector", "blocks.span", "blocks.block_hash", "blocks.role", "raw.span bytes", "PROJECTION_VERSION"],
+            "raw_span_read": true,
+            "prose_stored": false,
+            "prose_emitted": false,
+            "note": "Only allowlisted user/assistant prose blocks of one published generation are scanned. Raw spans are re-read to verify and re-derive the block; prose text is never stored or printed."
+        },
+        "counts": {
+            "blocks_total": blocks_total,
+            "blocks_scanned": result.blocks_scanned,
+            "excluded_role_blocks": excluded_role_blocks,
+            "unverified_blocks": unverified_blocks,
+            "occurrences": result.occurrences,
+            "assignment_context": result.assignment_context,
+            "mention": result.mention,
+            "ambiguous": result.ambiguous,
+            "distinct_values": distinct
+        },
+        "observations": observations,
+        "task_assignment": "none",
+        "task_key": Value::Null,
+        "explain": if has(args, "--explain") {
+            vec![
+                "Read every prose block row pinned to the active generation from the published postings layer; thinking, tool output, system, unknown and call-signature blocks are never prose rows.".to_string(),
+                "Re-read the pinned raw span, check the FNV span hash against the address event, re-derive the block with its versioned selector and require the block digest to match before scanning any marker.".to_string(),
+                "Scan only the exact task_id= key with an ASCII marker value; every occurrence is retained with its in-block character offsets, never deduplicated into a session-level claim.".to_string(),
+                "Classify each occurrence from assignment and mention cues in its local window, bounded at the next marker so one marker's cue cannot justify another; no cue or both cue classes means ambiguous/abstain.".to_string(),
+                "Every observation carries generation, event, span, selector and block digest for reopening with `ase open`, plus rule name/version and null task_key/assigned_to/session_assignment: this rule observes markers only.".to_string()
+            ]
+        } else {
+            Vec::<String>::new()
+        },
+        "guarantees": [
+            "Metadata-only by default: no prose text, snippet or session-level summary is emitted; the exact block is reopened from raw bytes with the same generation.",
+            "Only user/assistant prose blocks that verify by span hash and block digest are scanned; tool output and thinking markers cannot appear.",
+            "Multiple markers, repeated references and every occurrence are retained separately; no first-token or single-session promotion exists.",
+            "Assignment-context, mention and ambiguous statuses remain candidate signals with their cues and reasons; ambiguity is never resolved by this rule.",
+            "No TaskKey, assigned_to edge or session-level inference is produced; reconciling signals is P0c-5."
+        ]
+    });
+    emit(&v, args);
     Ok(())
 }
