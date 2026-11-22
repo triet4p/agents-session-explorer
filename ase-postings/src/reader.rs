@@ -221,6 +221,48 @@ pub fn all_prose_blocks(published: &Publication) -> Result<Vec<BlockRecord>> {
     Ok(out)
 }
 
+/// All call blocks of one source file in one pinned generation, in insertion
+/// order. Insertion order preserves the projection order inside a multi-call
+/// event, which selector-string ordering would not.
+pub fn call_blocks_by_file(
+    published: &Publication,
+    file: ase_core::FileId,
+) -> Result<Vec<BlockRecord>> {
+    let conn = db(published)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT rowid, event_idx, selector, kind, role, file, span_off, span_len,
+                    session_local, parent_idx, block_hash
+             FROM blocks WHERE generation=?1 AND kind='call' AND file=?2
+             ORDER BY event_idx, rowid",
+        )
+        .map_err(|e| err(format!("call blocks prepare: {e}")))?;
+    let rows = stmt
+        .query_map(params![published.generation, file as i64], |r| {
+            Ok(BlockRecord {
+                rowid: r.get(0)?,
+                event: r.get(1)?,
+                selector: r.get(2)?,
+                kind: r.get(3)?,
+                role: r.get(4)?,
+                span: SpanRef {
+                    file: r.get(5)?,
+                    off: r.get::<_, i64>(6)? as u64,
+                    len: r.get(7)?,
+                },
+                session_local: r.get(8)?,
+                parent_idx: r.get(9)?,
+                block_hash: r.get(10)?,
+            })
+        })
+        .map_err(|e| err(format!("call blocks query: {e}")))?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| err(format!("call block row: {e}")))?);
+    }
+    Ok(out)
+}
+
 pub fn shingles_by_token(published: &Publication, token: &str) -> Result<Vec<ShingleRow>> {
     let conn = db(published)?;
     let mut stmt = conn

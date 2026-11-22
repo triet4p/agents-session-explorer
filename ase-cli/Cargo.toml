@@ -16,5 +16,6 @@ ase-naming = { path = "../ase-naming" }
 ase-delegation = { path = "../ase-delegation" }
 ase-markers = { path = "../ase-markers" }
 ase-task = { path = "../ase-task" }
+ase-motif = { path = "../ase-motif" }
 serde_json = { version = "1", features = ["raw_value"] }
 zstd = "0.14"

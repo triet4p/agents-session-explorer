@@ -1,0 +1,13 @@
+[package]
+name = "ase-motif"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ase-core = { path = "../ase-core" }
+ase-index = { path = "../ase-index" }
+ase-ingest = { path = "../ase-ingest" }
+ase-postings = { path = "../ase-postings" }
+ase-task = { path = "../ase-task" }
+serde_json = { version = "1", features = ["raw_value"] }
+sha2 = "0.10"

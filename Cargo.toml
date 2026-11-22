@@ -1,5 +1,5 @@
 [workspace]
-members = ["ase-core", "ase-ingest", "ase-index", "ase-cli", "ase-postings", "ase-naming", "ase-delegation", "ase-markers", "ase-task"]
+members = ["ase-core", "ase-ingest", "ase-index", "ase-cli", "ase-postings", "ase-naming", "ase-delegation", "ase-markers", "ase-task", "ase-motif"]
 resolver = "2"
 
 [workspace.package]

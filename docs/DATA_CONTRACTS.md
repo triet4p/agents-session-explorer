@@ -21,6 +21,8 @@ Trang này định nghĩa **đơn vị tham chiếu và điều kiện để tin
 
 **Đã có ở P0b.** Mỗi block prose hoặc call có `(generation, event, selector có phiên bản)`. `search` trả khóa này; `open` từ chối generation khác và chỉ xác minh thành công khi khớp cả checksum span lẫn digest block trích lại. Điều này không biến cạnh call/result của P0a thành cạnh theo block; chi tiết hiện hành nằm ở [bằng chứng P0b](../artifacts/P0b/summary.md#2-observable-contracts).
 
+**Đã có ở P0d-1.** `ase-motif` chiếu chuỗi call từ bảng `blocks` của một generation đã ghim, chỉ cho phiên con của một membership `dispatch-v1` hợp lệ (mỗi attempt một join cha/con). Mỗi call giữ `(generation, event, selector, span, block_hash)` và mở lại bằng đúng đường kiểm của `open`: generation → span → checksum byte → selector có phiên bản → digest block. Chuỗi dừng ở mọi chỗ chuỗi cha không nối tiếp (fork, gốc, phiên khác), nên không hàng nào trộn hai nhánh hoặc hai phiên; tên tệp, đường dẫn và `parentSession` không tham gia membership.
+
 **Đề xuất.** Giữ event làm địa chỉ; decoder chiếu `0..n` block thành `ProjectionRef = (event_ref, decoder_version, selector)`; ví dụ selector là đường trường + chỉ số phần tử mảng. Một dòng gồm prose, hai call và usage cho nhiều hàng cùng span, khác selector; không nhân đôi event, không cho rằng mọi assistant entry là một call. Hàng posting, chữ ký call, usage và đầu cạnh giữ selector riêng. Trình bày phải đánh dấu nếu chỉ chỉ được cả dòng. Phiên bản selector khác thì tái chiếu và kiểm digest trước khi dùng.
 
 | Quan hệ | Miền hợp lệ đề xuất | Không đủ bằng chứng |
