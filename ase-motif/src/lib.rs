@@ -1,6 +1,7 @@
-//! P0d-1 motif evidence: CallSig sequences and deterministic families.
+//! Motif evidence: CallSig sequences, deterministic families, bounded
+//! alignment, task-level support and a permutation null model.
 //!
-//! Three steps, each refusing to invent evidence:
+//! Each step refuses to invent evidence:
 //!
 //! 1. [`membership::membership`] resolves a task token from native
 //!    `task_dispatch_v1` / `task_dispatch_child_v1` records only
@@ -12,15 +13,27 @@
 //!    session boundary.
 //! 3. [`family::families`] groups sequences by Jaccard overlap over
 //!    `shingle-k3k5-v1` tokens in a deterministic order.
+//! 4. [`align::align`] aligns a sequence to a motif skeleton while keeping
+//!    insertions and substitutions as separate observations.
+//! 5. [`motif::detect`] counts support per task across attempts, records the
+//!    denominator and exclusions, and reports a fixed-seed permutation null
+//!    (lift and z) over each motif's reopenable occurrences.
 //!
-//! There is no CLI, no alignment and no model in this crate.
+//! There is no model on any path.
 
+pub mod align;
 pub mod family;
 pub mod membership;
+pub mod motif;
 pub mod projection;
 
+pub use align::{align, AlignConfig, AlignOp, Alignment};
 pub use family::{families, Family, FamilyConfig, FamilyReport, RULE_NAME, RULE_VERSION};
 pub use membership::{membership, AttemptMembership, TaskMembership};
+pub use motif::{
+    detect, Motif, MotifConfig, MotifReport, NullModel, Occurrence, OccurrenceCall,
+    TaskExclusion, TaskExclusionReason, MOTIF_RULE_NAME, MOTIF_RULE_VERSION, NULL_SEED,
+};
 pub use projection::{
     project, reopen_call, AttemptSequences, CallEvidence, Sequence, TaskSequences,
 };

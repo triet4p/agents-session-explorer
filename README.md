@@ -125,6 +125,12 @@ ase resolve task:410 --index .tmp/dispatch/ase.index --json --explain
 ase resolve task:10410 --index .tmp/dispatch/ase.index --json --explain
 ase show span:<FILE>:<OFF>:<LEN> --index .tmp/dispatch/ase.index --json --explain
 
+# P0d-2 motif alignment and support: synthetic fixture, occurrence reopen
+ase fixture-motif --out .tmp/motif
+ase index --layer all --omp-root .tmp/motif/omp --codex-root .tmp/motif/codex --index .tmp/motif/ase.index
+ase motif 1 2 3 9 --index .tmp/motif/ase.index --tau 0 --json --explain
+ase open --event N --selector S --generation G --index .tmp/motif/ase.index --json
+
 # Re-read raw bytes at every indexed span
 ase verify --all --index ase.index --json
 
@@ -245,4 +251,6 @@ search hit is still served.
 
 `shingle` reports versioned `k=3..5` CallSig windows. A sequence continues only along a same-session explicit parent chain; forks, unresolved parents and session boundaries start a new sequence and are abstained from. Each row carries its constituent event/selector evidence.
 
-`ase-motif` (library only in this step; no CLI yet) turns that substrate into motif evidence. Membership for a task token comes from one native dispatch join per attempt: name grammar, path matches and `parentSession` declarations are never passed in, so they cannot widen it. For each admitted child session it rebuilds the writer's parent-chain sequences from the call blocks of one pinned generation and keeps every call as `(generation, event, selector, span, block_hash)`; a sequence never crosses a fork or a session boundary, and each call reopens through the same generation, span-checksum, selector and digest checks as `ase open`. Families are the deterministic single-linkage components of a Jaccard overlap over the sequence's `k=3..5` shingle tokens, with `tau` a caller parameter rather than a measured gate.
+`ase-motif` turns that substrate into motif evidence. Membership for a task token comes from one native dispatch join per attempt: name grammar, path matches and `parentSession` declarations are never passed in, so they cannot widen it. For each admitted child session it rebuilds the writer's parent-chain sequences from the call blocks of one pinned generation and keeps every call as `(generation, event, selector, span, block_hash)`; a sequence never crosses a fork or a session boundary, and each call reopens through the same generation, span-checksum, selector and digest checks as `ase open`. Families are the deterministic single-linkage components of a Jaccard overlap over the sequence's `k=3..5` shingle tokens, with `tau` a caller parameter rather than a measured gate.
+
+`ase motif` aligns each family sequence to the family's deterministic skeleton with a banded Needleman–Wunsch pass. Insertions (a call the sequence added) and substitutions (a different call at the same column) are reported as separate counts; a sequence with substitutions inside `--max-substitutions` and no missing column is a near miss, not support. Support is counted per **task**, so repeated attempts and repeated occurrences of one task are one observation. `support_relaxed[g]` allows at most `g` skipped calls between motif columns and is monotonic in `g` by construction. Each motif reports its denominator (`tasks_total`, `tasks_in_family`, `sequences_in_family`) and every excluded task with a reason. A fixed-seed (`null_seed`) permutation of each sequence's call order supplies the null model: `observed`, `expected`, `stddev`, `z` and `lift`. Every occurrence call carries its generation, event, selector, span and digest and was reopened from raw bytes before it entered the motif; `ase open` can re-verify one call individually.

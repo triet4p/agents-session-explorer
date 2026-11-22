@@ -13,6 +13,9 @@
 //! records into `resolve task:` evidence and adds `fixture-dispatch`.
 //! The record loader itself lives in `ase-motif::membership` so the motif
 //! projection reuses exactly the same validated membership.
+//! P0d-2 adds `motif` (bounded alignment, task-deduplicated support, recorded
+//! denominator/exclusions, fixed-seed null model and per-occurrence evidence)
+//! and `fixture-motif` synthetic fixtures.
 
 use ase_core::{err, EventIdx, ProjectionKind, RawStore, Result, Role, SpanRef, NONE};
 use ase_index::{
@@ -65,6 +68,8 @@ fn main() {
         "fixture-markers" => cmd_fixture_markers(rest),
         "fixture-resolve" => cmd_fixture_resolve(rest),
         "fixture-dispatch" => cmd_fixture_dispatch(rest),
+        "motif" => cmd_motif(rest),
+        "fixture-motif" => cmd_fixture_motif(rest),
         other => Err(err(format!("unknown command: {other}"))),
     };
     if let Err(e) = result {
@@ -95,6 +100,10 @@ fn usage() {
          ase fixture-markers --out DIR\n\
          ase fixture-resolve --out DIR\n\
          ase fixture-dispatch --out DIR\n\
+         ase motif  TOKEN... [--tau F] [--k-min N] [--k-max N] [--max-gap N]\n\
+                     [--band N] [--max-substitutions N] [--null-permutations N]\n\
+                     [--min-tasks N] [--explain] [--json]\n\
+         ase fixture-motif --out DIR\n\
          ase fixture-p0b --out DIR"
     );
 }
@@ -119,6 +128,23 @@ fn positional(args: &[String]) -> Option<String> {
         expecting = false;
     }
     None
+}
+
+fn positionals(args: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut expecting = false;
+    for a in args {
+        if a.starts_with("--") {
+            expecting = true;
+            continue;
+        }
+        if expecting {
+            expecting = false;
+            continue;
+        }
+        out.push(a.clone());
+    }
+    out
 }
 
 fn opt(args: &[String], name: &str) -> Option<String> {
@@ -2962,6 +2988,468 @@ fn cmd_fixture_dispatch(args: &[String]) -> Result<()> {
     println!(
         "wrote {} synthetic P0c-9 dispatch fixtures to {}",
         DISPATCH_FIXTURE.len(),
+        out.display()
+    );
+    Ok(())
+}
+
+fn parse_opt<T: std::str::FromStr>(args: &[String], name: &str) -> Result<Option<T>> {
+    match opt(args, name) {
+        Some(value) => value
+            .parse()
+            .map(Some)
+            .map_err(|_| err(format!("{name} needs a number, got {value}"))),
+        None => Ok(None),
+    }
+}
+
+fn cmd_motif(args: &[String]) -> Result<()> {
+    let tokens = positionals(args);
+    if tokens.is_empty() {
+        return Err(err("motif needs at least one task token"));
+    }
+    let (idx, store, published) = require_publication(args)?;
+
+    let mut tasks = Vec::with_capacity(tokens.len());
+    let mut task_rows = Vec::with_capacity(tokens.len());
+    for token in &tokens {
+        let member = ase_motif::membership(&idx, &store, token)?;
+        let projected = ase_motif::project(&published, &idx, &member)?;
+        task_rows.push(json!({
+            "token": token,
+            "status": member.status.label(),
+            "task_key": &member.task_key,
+            "attempts": member.attempts.iter().map(|attempt| json!({
+                "attempt": &attempt.attempt,
+                "dispatch_id": &attempt.dispatch_id,
+                "child_session_id": &attempt.child_session_id,
+                "child_span": &attempt.child_span,
+                "parent_span": &attempt.parent_span
+            })).collect::<Vec<Value>>(),
+            "rejected_claims": member.dispatch.issues_for_token.iter().map(|issue| json!({
+                "record": &issue.record,
+                "kind": &issue.kind,
+                "dispatch_id": &issue.dispatch_id,
+                "event": issue.event,
+                "span": &issue.span,
+                "detail": &issue.detail
+            })).collect::<Vec<Value>>()
+        }));
+        tasks.push(projected);
+    }
+
+    let mut config = ase_motif::MotifConfig::default();
+    if let Some(value) = parse_opt::<f64>(args, "--tau")? {
+        config.family.tau = value;
+    }
+    if let Some(value) = parse_opt::<u32>(args, "--k-min")? {
+        config.family.k_min = value;
+    }
+    if let Some(value) = parse_opt::<u32>(args, "--k-max")? {
+        config.family.k_max = value;
+    }
+    if let Some(value) = parse_opt::<u32>(args, "--max-gap")? {
+        config.max_gap = value;
+    }
+    if let Some(value) = parse_opt::<u32>(args, "--band")? {
+        config.band = value;
+    }
+    if let Some(value) = parse_opt::<u32>(args, "--max-substitutions")? {
+        config.max_substitutions = value;
+    }
+    if let Some(value) = parse_opt::<u32>(args, "--null-permutations")? {
+        config.null_permutations = value;
+    }
+    if let Some(value) = parse_opt::<u32>(args, "--min-tasks")? {
+        config.min_tasks = value;
+    }
+
+    let report = ase_motif::detect(&published, &idx, &store, &tasks, &config)?;
+
+    let motifs: Vec<Value> = report
+        .motifs
+        .iter()
+        .map(|motif| {
+            let null_model = &motif.null;
+            json!({
+                "id": &motif.id,
+                "family_id": &motif.family_id,
+                "rule": { "name": report.rule_name, "version": report.rule_version },
+                "reference": {
+                    "task": &motif.reference_task,
+                    "attempt": &motif.reference_attempt,
+                    "sequence": motif.reference_sequence
+                },
+                "signatures": &motif.signatures,
+                "columns": motif.columns.iter().map(|column| json!({
+                    "index": column.index,
+                    "signature": &column.signature,
+                    "matches": column.matches,
+                    "substitutions": &column.substitutions,
+                    "missing": column.missing
+                })).collect::<Vec<Value>>(),
+                "support": {
+                    "exact": motif.support_exact,
+                    "relaxed": &motif.support_relaxed,
+                    "gap_max": config.max_gap,
+                    "rule": "distinct task keys; a task counts once no matter how many attempts or occurrences contain the motif"
+                },
+                "null": {
+                    "permutations": null_model.permutations,
+                    "seed": null_model.seed.to_string(),
+                    "observed": null_model.observed,
+                    "expected": null_model.expected,
+                    "stddev": null_model.stddev,
+                    "z": null_model.z,
+                    "lift": null_model.lift,
+                    "rule": "fixed-seed SplitMix64 permutation of each sequence's call order; exact support recounted per task"
+                },
+                "denominator": {
+                    "tasks_total": motif.denominator.tasks_total,
+                    "tasks_in_family": motif.denominator.tasks_in_family,
+                    "tasks_with_occurrence": motif.denominator.tasks_with_occurrence,
+                    "sequences_in_family": motif.denominator.sequences_in_family,
+                    "sequences_with_occurrence": motif.denominator.sequences_with_occurrence,
+                    "excluded": motif.denominator.excluded.iter().map(|exclusion| json!({
+                        "task": &exclusion.task,
+                        "reason": &exclusion.reason
+                    })).collect::<Vec<Value>>()
+                },
+                "occurrences": motif.occurrences.iter().map(|occurrence| json!({
+                    "task": &occurrence.task,
+                    "attempt": &occurrence.attempt,
+                    "dispatch_id": &occurrence.dispatch_id,
+                    "sequence": occurrence.sequence,
+                    "gap": occurrence.gap,
+                    "calls": occurrence.calls.iter().map(|call| json!({
+                        "position": call.position,
+                        "signature": &call.signature,
+                        "generation": &call.evidence.generation,
+                        "event": call.evidence.event,
+                        "file": call.evidence.file,
+                        "span": span_label(call.evidence.span),
+                        "selector": &call.evidence.selector,
+                        "block_hash": &call.evidence.block_hash,
+                        "session_local": call.evidence.session_local,
+                        "reopened": true
+                    })).collect::<Vec<Value>>()
+                })).collect::<Vec<Value>>(),
+                "occurrences_truncated": motif.occurrences_truncated,
+                "variants": motif.variants.iter().map(|variant| json!({
+                    "task": &variant.task,
+                    "attempt": &variant.attempt,
+                    "sequence": variant.sequence,
+                    "matches": variant.matches,
+                    "substitutions": variant.substitutions,
+                    "insertions": variant.insertions,
+                    "deletions": variant.deletions,
+                    "substituted_columns": &variant.substituted_columns,
+                    "near_miss": variant.near_miss
+                })).collect::<Vec<Value>>(),
+                "sequence_exclusions": motif.sequence_exclusions.iter().map(|exclusion| json!({
+                    "task": &exclusion.task,
+                    "attempt": &exclusion.attempt,
+                    "sequence": exclusion.sequence,
+                    "reason": &exclusion.reason
+                })).collect::<Vec<Value>>()
+            })
+        })
+        .collect();
+
+    let explain = vec![
+        "Membership is one native dispatch join per attempt; naming, path and parentSession candidates are never inputs.".to_string(),
+        "Support counts distinct task keys: repeated attempts and repeated occurrences of one task are one observation.".to_string(),
+        "support_relaxed[g] allows at most g skipped calls between motif columns, so raising g never lowers support.".to_string(),
+        "An occurrence may carry a gap above --max-gap; it stays evidence with its gap value, while support_relaxed only counts the configured ceiling.".to_string(),
+        "The null model permutes each sequence's call order with the recorded fixed seed and recounts exact per-task support; lift and z compare the observation against that expectation.".to_string(),
+        "Insertion and substitution stay separate: an added call is an insertion, a different call at the same column is a substitution.".to_string(),
+        "Every occurrence call was reopened from raw bytes at its pinned generation, span and selector before entering the motif; `ase open --event --selector --generation` re-verifies a single call.".to_string(),
+    ];
+
+    let v = json!({
+        "command": "motif",
+        "status": "ok",
+        "generation": published.generation,
+        "tasks": task_rows,
+        "config": {
+            "rule": { "name": report.rule_name, "version": report.rule_version },
+            "family": { "k_min": config.family.k_min, "k_max": config.family.k_max, "tau": config.family.tau },
+            "max_gap": config.max_gap,
+            "band": config.band,
+            "max_substitutions": config.max_substitutions,
+            "null_permutations": config.null_permutations,
+            "null_seed": config.null_seed.to_string(),
+            "max_occurrences": config.max_occurrences,
+            "min_tasks": config.min_tasks
+        },
+        "summary": {
+            "tasks_total": report.tasks,
+            "sequences": report.sequences,
+            "families": report.families,
+            "families_below_min_tasks": report.families_below_min_tasks,
+            "motifs": motifs.len()
+        },
+        "excluded_tasks": report.excluded_tasks.iter().map(|exclusion| json!({
+            "task": &exclusion.task,
+            "reason": exclusion.reason.label()
+        })).collect::<Vec<Value>>(),
+        "motifs": motifs,
+        "explain": if has(args, "--explain") { explain } else { Vec::<String>::new() }
+    });
+
+    if has(args, "--json") {
+        println!("{}", serde_json::to_string_pretty(&v).unwrap());
+    } else {
+        println!(
+            "motif: {} task(s), {} sequence(s), {} family(ies), {} motif(s)",
+            report.tasks,
+            report.sequences,
+            report.families,
+            report.motifs.len()
+        );
+        for exclusion in &report.excluded_tasks {
+            println!(
+                "  excluded task {} ({})",
+                exclusion.task,
+                exclusion.reason.label()
+            );
+        }
+        for motif in &report.motifs {
+            let z = motif
+                .null
+                .z
+                .map(|value| format!("{value:.2}"))
+                .unwrap_or_else(|| "-".to_string());
+            let lift = motif
+                .null
+                .lift
+                .map(|value| format!("{value:.2}"))
+                .unwrap_or_else(|| "-".to_string());
+            println!(
+                "  {} tasks={}/{} exact={} relaxed={:?} z={} lift={} occurrences={}",
+                motif.id,
+                motif.denominator.tasks_in_family,
+                motif.denominator.tasks_total,
+                motif.support_exact,
+                motif.support_relaxed,
+                z,
+                lift,
+                motif.occurrences.len()
+            );
+            println!(
+                "    signatures: {}",
+                motif.signatures.join(" -> ")
+            );
+            for occurrence in &motif.occurrences {
+                println!(
+                    "    occurrence task={} attempt={} gap={} first_event={}",
+                    occurrence.task,
+                    occurrence.attempt,
+                    occurrence.gap,
+                    occurrence
+                        .calls
+                        .first()
+                        .map(|call| call.evidence.event)
+                        .unwrap_or(NONE)
+                );
+            }
+        }
+        if has(args, "--explain") {
+            for step in v["explain"].as_array().into_iter().flatten() {
+                println!("  step: {}", step.as_str().unwrap_or(""));
+            }
+        }
+    }
+    Ok(())
+}
+
+const MOTIF_TS: &str = "2026-11-02T00:00:00.000Z";
+const MOTIF_PARENT_SESSION: &str = "p0d2-fixture-parent";
+
+const M_A1: &str = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
+const M_A2: &str = "a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2";
+const M_B1: &str = "b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1";
+const M_C1: &str = "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1";
+const M_E1: &str = "e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1";
+
+struct MotifFixtureTask {
+    dispatch_id: &'static str,
+    task: &'static str,
+    attempt: &'static str,
+    session_id: &'static str,
+    tools: &'static [&'static str],
+}
+
+// Synthetic only. Task 1 repeats across two attempts (one exact, one with an
+// inserted call), task 2 is gapped-only, task 3 is a near miss with one
+// substitution, and task 9 is a valid join whose child has no call at all.
+const MOTIF_FIXTURE_TASKS: &[MotifFixtureTask] = &[
+    MotifFixtureTask {
+        dispatch_id: M_A1,
+        task: "1",
+        attempt: "a1",
+        session_id: "p0d2-child-1-a1",
+        tools: &["t1", "t2", "t3", "t4"],
+    },
+    MotifFixtureTask {
+        dispatch_id: M_A2,
+        task: "1",
+        attempt: "a2",
+        session_id: "p0d2-child-1-a2",
+        tools: &["t1", "t2", "x1", "t3", "t4"],
+    },
+    MotifFixtureTask {
+        dispatch_id: M_B1,
+        task: "2",
+        attempt: "b1",
+        session_id: "p0d2-child-2-b1",
+        tools: &["t1", "t2", "y1", "t3", "t4"],
+    },
+    MotifFixtureTask {
+        dispatch_id: M_C1,
+        task: "3",
+        attempt: "c1",
+        session_id: "p0d2-child-3-c1",
+        tools: &["t1", "t2", "z1", "t4"],
+    },
+    MotifFixtureTask {
+        dispatch_id: M_E1,
+        task: "9",
+        attempt: "a1",
+        session_id: "p0d2-child-9-a1",
+        tools: &[],
+    },
+];
+
+fn motif_session_line(id: &str) -> String {
+    format!(
+        "{}\n",
+        json!({
+            "type": "session",
+            "version": 3,
+            "id": id,
+            "timestamp": MOTIF_TS,
+            "cwd": "C:\\SYNTHETIC\\p0d2",
+            "title": "synthetic P0d-2 motif fixture"
+        })
+    )
+}
+
+fn motif_parent_line(spawn: u32, task: &MotifFixtureTask) -> String {
+    format!(
+        "{}\n",
+        json!({
+            "type": "custom",
+            "timestamp": MOTIF_TS,
+            "customType": "task_dispatch_v1",
+            "data": {
+                "dispatch_id": task.dispatch_id,
+                "parent_session_id": MOTIF_PARENT_SESSION,
+                "parent_tool_call_id": format!("call-motif-{spawn}"),
+                "spawn_index": spawn,
+                "project_id": "P0D2",
+                "task_id": task.task,
+                "attempt_id": task.attempt
+            }
+        })
+    )
+}
+
+fn motif_child_line(dispatch_id: &str, session_id: &str) -> String {
+    format!(
+        "{}\n",
+        json!({
+            "type": "custom",
+            "timestamp": MOTIF_TS,
+            "customType": "task_dispatch_child_v1",
+            "data": { "dispatch_id": dispatch_id, "session_id": session_id }
+        })
+    )
+}
+
+fn motif_turn_line(
+    session_id: &str,
+    ordinal: usize,
+    parent: Option<&str>,
+    tools: &[&str],
+) -> String {
+    let id = format!("{session_id}-e{ordinal}");
+    let mut content = vec![json!({
+        "type": "text",
+        "text": format!("synthetic motif turn {ordinal}")
+    })];
+    for tool in tools {
+        content.push(json!({
+            "type": "toolCall",
+            "id": format!("{id}-{tool}"),
+            "name": tool,
+            "args": { "path": format!("synthetic/{tool}.txt"), "flag": true }
+        }));
+    }
+    let mut value = json!({
+        "type": "message",
+        "id": id,
+        "parentId": Value::Null,
+        "timestamp": MOTIF_TS,
+        "message": { "role": "assistant", "content": content }
+    });
+    if let Some(parent) = parent {
+        value["parentId"] = json!(parent);
+    }
+    format!("{value}\n")
+}
+
+fn cmd_fixture_motif(args: &[String]) -> Result<()> {
+    let out = PathBuf::from(
+        opt(args, "--out").ok_or_else(|| err("fixture-motif needs --out DIR"))?,
+    );
+    let omp = out.join("omp");
+    let codex = out.join("codex");
+    fs::create_dir_all(&omp).map_err(|e| err(format!("create {}: {e}", omp.display())))?;
+    fs::create_dir_all(&codex).map_err(|e| err(format!("create {}: {e}", codex.display())))?;
+
+    let mut parent = motif_session_line(MOTIF_PARENT_SESSION);
+    for (spawn, task) in MOTIF_FIXTURE_TASKS.iter().enumerate() {
+        parent.push_str(&motif_parent_line(spawn as u32, task));
+    }
+    let parent_path = omp.join("p0d2").join("parent.jsonl");
+    if let Some(dir) = parent_path.parent() {
+        fs::create_dir_all(dir).map_err(|e| err(format!("create {}: {e}", dir.display())))?;
+    }
+    fs::write(&parent_path, parent)
+        .map_err(|e| err(format!("write {}: {e}", parent_path.display())))?;
+
+    for task in MOTIF_FIXTURE_TASKS {
+        let mut content = motif_session_line(task.session_id);
+        content.push_str(&motif_child_line(task.dispatch_id, task.session_id));
+        if task.tools.is_empty() {
+            content.push_str(&resolve_message_line(
+                task.session_id,
+                1,
+                "assistant",
+                "synthetic motif child without tool calls",
+            ));
+        } else {
+            let mut parent_id: Option<String> = None;
+            for (ordinal, tool) in task.tools.iter().enumerate() {
+                content.push_str(&motif_turn_line(
+                    task.session_id,
+                    ordinal + 1,
+                    parent_id.as_deref(),
+                    &[*tool],
+                ));
+                parent_id = Some(format!("{}-e{}", task.session_id, ordinal + 1));
+            }
+        }
+        let path = omp
+            .join("p0d2")
+            .join(format!("child-{}-{}.jsonl", task.task, task.attempt));
+        fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
+    }
+
+    println!(
+        "wrote {} synthetic P0d-2 motif fixture tasks to {}",
+        MOTIF_FIXTURE_TASKS.len(),
         out.display()
     );
     Ok(())

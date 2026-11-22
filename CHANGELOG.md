@@ -4,7 +4,12 @@
 
 ### Added
 
-- Added the `ase-motif` library (no CLI yet): generation-pinned CallSig sequences for the child sessions of a validated native dispatch membership, per-call reopenable evidence, and deterministic Jaccard families over `k=3..5` shingle tokens. Membership comes from `dispatch-v1` joins only; name, path and `parentSession` candidates are never membership inputs, and no sequence crosses a fork or session boundary.
+- Added the `ase-motif` library: generation-pinned CallSig sequences for the child sessions of a validated native dispatch membership, per-call reopenable evidence, and deterministic Jaccard families over `k=3..5` shingle tokens. Membership comes from `dispatch-v1` joins only; name, path and `parentSession` candidates are never membership inputs, and no sequence crosses a fork or session boundary.
+- Added `ase motif` (rule `motif-alignment` / `motif-align-v1`) and `ase fixture-motif`: a bounded banded alignment keeps insertions and substitutions separate, support counts distinct tasks so repeated attempts of one task are one observation, `support_relaxed(g)` is monotonic in the gap allowance, and each motif reports its denominator and excluded tasks. A fixed-seed permutation null model reports `observed`/`expected`/`z`/`lift`, and every occurrence carries its generation, event, selector, span and digest so `ase open` can re-verify a single call.
+
+### Changed
+
+- Changed `ase-motif` from a library-only step to a CLI-visible motif layer; `ase motif` renders alignment, task-deduplicated support, denominator/exclusions and the null model, and no path calls a model.
 
 ## [0.2.0] - TBD
 
