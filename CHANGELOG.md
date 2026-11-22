@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `ase index --help` to print index usage and exit 0 without reading session sources or writing any index.
+
 ## [0.1.0] - 2026-11-22
 
 ### Added

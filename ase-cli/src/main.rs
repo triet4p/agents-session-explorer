@@ -66,6 +66,13 @@ fn usage() {
     );
 }
 
+fn index_usage() {
+    println!(
+        "ase index [--layer address|postings|all] [--omp-root DIR] [--codex-root DIR]\n\
+         [--index FILE] [--fail-before-publish] [--json]"
+    );
+}
+
 fn positional(args: &[String]) -> Option<String> {
     let mut expecting = false;
     for a in args {
@@ -192,6 +199,10 @@ fn validate_address_corpus(idx: &Index, corpus: &DecodedCorpus) -> Result<()> {
 }
 
 fn cmd_index(args: &[String]) -> Result<()> {
+    if has(args, "--help") || has(args, "-h") {
+        index_usage();
+        return Ok(());
+    }
     let out = index_path(args);
     let omp = PathBuf::from(opt(args, "--omp-root").unwrap_or_else(|| DEFAULT_OMP.to_string()));
     let codex = PathBuf::from(opt(args, "--codex-root").unwrap_or_else(|| DEFAULT_CODEX.to_string()));
