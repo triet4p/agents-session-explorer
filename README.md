@@ -131,6 +131,48 @@ ase index --layer all --omp-root .tmp/motif/omp --codex-root .tmp/motif/codex --
 ase motif 1 2 3 9 --index .tmp/motif/ase.index --tau 0 --json --explain
 ase open --event N --selector S --generation G --index .tmp/motif/ase.index --json
 
+# OMP stock adapter: advisory parent-child / repo / task claims (no membership)
+ase fixture-adapter --out .tmp/adapter
+ase index --layer all --omp-root .tmp/adapter/omp --codex-root .tmp/adapter/codex --index .tmp/adapter/ase.index
+ase adapter omp-stock --all --index .tmp/adapter/ase.index --out .tmp/adapter/claims.json --json
+ase adapter omp-stock --session <ID> --index ase.index --json
+ase adapter omp-stock --reopen .tmp/adapter/claims.json --index .tmp/adapter/ase.index --json
+
+# P1 Turn/Episode projection: active leaf by default, explicit older leaf on request
+ase index --omp-root .tmp/work/omp --codex-root .tmp/work/codex --index .tmp/work/ase.index
+ase work project --omp-root .tmp/work/omp --start 2026-09-01T00:00:00Z \
+  --end 2026-10-01T00:00:00Z --index .tmp/work/ase.index \
+  --out .tmp/work/rows.jsonl --json
+ase work session --session <ID> --index .tmp/work/ase.index --json
+ase work session --session <ID> --leaf <ENTRY_ID> --index .tmp/work/ase.index \
+  --out .tmp/work/session.json --json
+ase work reopen .tmp/work/session.json --index .tmp/work/ase.index --json
+
+# Compare an independently counted reference, aligned per journal by SHA-256
+ase work compare --projection .tmp/work/rows.jsonl \
+  --reference .tmp/work/reference.jsonl --json
+
+# Explicit before/after attempt delta for one dispatch-confirmed task
+ase fixture-delta --out .tmp/delta
+ase index --omp-root .tmp/delta/omp --codex-root .tmp/delta/codex --index .tmp/delta/ase.index
+ase work delta --task T701 --project S31 --before s4t3-before --after s4t3-after \
+  --omp-root .tmp/delta/omp --index .tmp/delta/ase.index \
+  --out .tmp/delta/delta.json --before-out .tmp/delta/before.json \
+  --after-out .tmp/delta/after.json --json
+ase work reopen .tmp/delta/before.json --index .tmp/delta/ase.index --json
+ase work reopen .tmp/delta/after.json --index .tmp/delta/ase.index --json
+
+# P2 runtime analytics: nominal stored cost, duration vs clock union, coverage
+ase fixture-analytics --out .tmp/analytics
+ase index --omp-root .tmp/analytics/omp --codex-root .tmp/analytics/codex \
+  --index .tmp/analytics/ase.index
+ase analytics project --omp-root .tmp/analytics/omp --index .tmp/analytics/ase.index \
+  --start 2026-10-01T00:00:00Z --end 2026-11-01T00:00:00Z \
+  --out .tmp/analytics/rows.jsonl --report .tmp/analytics/report.json --json
+ase analytics session --session <ID> --index .tmp/analytics/ase.index \
+  --out .tmp/analytics/row.json --json
+ase analytics reopen .tmp/analytics/rows.jsonl --index .tmp/analytics/ase.index --json
+
 # Re-read raw bytes at every indexed span
 ase verify --all --index ase.index --json
 
@@ -140,6 +182,76 @@ ase bench-show --n 2000 --seed 1 --index ase.index --json
 
 Defaults: `--index ase.index`; OMP root `C:/Users/admin/.omp/agent/sessions`;
 Codex root `C:/Users/admin/.codex/sessions`.
+
+`ase work project` derives `Turn`/`Episode` rows under rule
+`omp-turn-episode` / `turn-episode-v1`, compatible with the locked Sprint-4
+reference rule `s4t1-turn-v1`. A turn is one assistant `message` entry with a
+`message.usage` object; the active leaf is the graph leaf with the greatest
+`(entry timestamp, ordinal)` and the active path walks `parentId` to the root.
+Episodes are runs of turns between user boundaries; the primary boundary is a
+user message, and the wide boundary also counts a `custom_message` with
+`attribution = "user"`. Parallel tool calls remain one turn. Branch choice,
+window-sensitive counts, abandoned turns and empty episodes are reported
+separately, so a total cannot hide opposite-sign errors.
+
+Each row is task-agnostic: no resolver or motif membership is read, and a
+session whose task is unresolved still projects identically. `--leaf ENTRY_ID`
+projects an explicit older tip instead of the active leaf. Detailed session
+output embeds a versioned, index-pinned evidence reference per turn, episode
+boundary and selected leaf; `ase work reopen` checks the generation, file
+digest, span, index checksum, line digest and selector, then recomputes the
+whole projection. Any mismatch is `stale`, never silently repaired.
+`ase work compare` aligns product rows with an independent reference by exact
+journal SHA-256 and reports per-journal diffs before aggregation, both
+cancellation directions and excluded/unresolved rows.
+
+`ase work delta` compares two **explicitly named** child sessions of one
+project/task membership confirmed by native `task_dispatch_v1` /
+`task_dispatch_child_v1` joins (`task-dispatch-provenance` / `dispatch-v1`),
+under rule `omp-attempt-delta` / `attempt-delta-v1`. It passes no naming,
+marker, path, adapter or motif input to the resolver: a bare task token with
+two project scopes is `ambiguous_membership`, a session whose observed claim
+names another task or project is `task_mismatch`, and a session with only a
+`task_id=` prose mention or a candidate claim is `unconfirmed_membership`.
+Every rejection exits 3 with the admitted attempts and the observed (never
+promoted) claims; no partial delta is emitted.
+
+Attempt order is **dispatch parent-record time**, tie-broken by
+`spawn_index`, `dispatch_id` and child session id. Attempt labels are labels,
+not chronology: the report lists every admitted attempt's rank and states
+whether label order agrees with time order. The delta itself is
+`after − before` over named T2 counts, plus turn and episode-boundary changes
+keyed by entry id with the same generation-pinned evidence used by
+`ase work session`. Both sides are reopened against the pinned index and raw
+bytes before a delta is produced; `--before-out` / `--after-out` write full
+projections that `ase work reopen` can verify independently. A mismatch is
+`evidence_unverified`, never a silent re-projection.
+
+`ase analytics` (rule `runtime-analytics` / `runtime-analytics-v1`) consumes
+the same P1 projection and reports per-turn stored facts beside it: nominal
+`message.usage.cost.total` (catalog USD, never repriced, no `stats.db` read),
+`message.duration`, `message.ttft`, and the half-open
+`[message.timestamp, message.completedAt)` clock interval. Cost and duration
+are sums over turns where the producer stored the field; the clock column is
+the **union** of those intervals, so overlapping parallel calls count once in
+clock time and once each in duration. Missing fields are counted in explicit
+coverage and excluded from sums — never filled with zero or an inferred price.
+The half-open `--start`/`--end` period uses `message.timestamp`, the same field
+the pinned T1 comparison uses. A scoped analytics run projects every root
+journal (and its subagents), so a journal that began before the period still
+contributes its in-window turns with complete branch context; the `period`
+totals in the report include only in-window turns, while `totals` stays the
+unscoped all-branch reconciliation. Duration is accumulated as exact
+fixed-point nanoseconds so the branch balance is exact at corpus scale instead
+of failing on float rounding; the cost reconciliation gate is unchanged.
+Project provenance comes only from the `<project>/<name>.jsonl` tree layout;
+unattributed sessions land in an explicit `<unknown-project>` group, never
+under a model or adapter candidate. Buckets are keyed by `(model, project)` and
+report active-leaf, all-branch and abandoned statistics separately, with a
+reconciliation that must agree with the P1 turn counts. `ase analytics reopen`
+re-checks generation, span, checksum, selector and the runtime facts themselves
+against raw bytes. `ase work project` keeps its separate header-time selection
+contract and is unaffected by analytics window scoping.
 
 `ase fixture --out <DIR>` writes synthetic OMP/Codex fixtures (including a
 `.zstd` file) for reproducible behavioral checks. No real transcript text is
@@ -227,6 +339,31 @@ emitted, and the exact block is reopened with `ase open` using the same
 generation. No TaskKey, `assigned_to` edge or session-level assignment is
 produced by the marker audit itself; `resolve task:` performs that
 reconciliation with naming and delegation evidence.
+
+`ase adapter omp-stock` reads unmodified OMP stock journals and emits
+advisory claims in three independent layers: `parent_child` (a `task` call in
+one journal and a child journal whose `parentSession` names it), `repo`
+(declared `cwd`, a derived candidate-only `repo_key`, and bounded path mentions
+under the workspace), and `task` (a
+structured child label, or a task token corroborated by the parent prompt and
+the child handoff). Each claim carries `confirmed`, `candidate`, `missing`,
+`unavailable` or `conflict`; the layers never promote one another. Multi-child
+task calls keep one scoped claim per sibling, and multi-task sessions are
+reported as `multi_task` rather than merged into one key. Mention-only prose
+and name-only about a child stay candidates and are never counted as
+confirmed.
+
+Claims are stored only when `--out` is supplied. They never write resolver
+assignment, motif membership, the address index or a source journal; ordinary
+`show`, `search`, `resolve`, `motif` and `verify` behavior is unchanged.
+`--reopen CLAIMS.json` pins the claims generation, re-reads every spanned
+byte, checks the index FNV checksum and strong line digest, and re-runs the
+versioned selector/decoder before trusting the value. Any mismatch marks that
+claim `stale` and keeps it for inspection. Confirmations depend on observed
+journal fields and, optionally, a child handoff `.md`; missing producer
+metadata is `missing`, not an error. `ase fixture-adapter` writes a synthetic
+stock-shaped project covering matching, multi-child, missing, conflict and
+multi-task cases without real transcript content.
 
 ## Search layer
 

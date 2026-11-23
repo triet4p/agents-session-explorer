@@ -1,0 +1,11 @@
+[package]
+name = "ase-work"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ase-core = { path = "../ase-core" }
+ase-ingest = { path = "../ase-ingest" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+sha2 = "0.10"

@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-23
+
+### Added
+
+- Added `ase-work` and `ase work project|session|reopen|compare`: a leaf-aware OMP `Turn`/`Episode` projection under rule `omp-turn-episode` / `turn-episode-v1`, compatible with the locked Sprint-4 reference rule `s4t1-turn-v1`. The active leaf is the graph leaf with the greatest `(entry timestamp, ordinal)`; `--leaf ENTRY_ID` projects an explicit older tip; parallel tool calls stay one turn; primary and user-attributed `custom_message` episode boundaries are reported separately. The projection is task-agnostic, so unresolved and no-task sessions project identically, and it never reads or writes resolver or motif membership.
+- Added `ase work reopen` and `ase work compare`: detailed projections carry generation-pinned, selector-versioned evidence for every leaf turn and episode boundary; reopen re-reads the span, checks index checksum and SHA-256 line digest, re-runs the selector and recomputes the whole journal, reporting `stale` on any mismatch. Compare aligns product rows with an independent reference by exact journal SHA-256, reports per-journal differences before aggregation, both cancellation directions, excluded product/reference-only files and the strict aggregate relative-error result.
+- Added `ase-adapter-omp-stock`, a separate stock-journal adapter that emits advisory `parent_child`, `repo` and `task` claims without writing resolver assignment, motif membership, the address index or any source journal. `confirmed`, `candidate`, `missing`, `unavailable` and `conflict` stay independent per layer; multi-child calls keep one scoped claim per sibling and multi-task sessions report `multi_task`.
+- Added `ase adapter omp-stock` (`--session`, `--file`, `--all`, `--out`, `--reopen`) and `ase fixture-adapter`: claims carry generation-pinned, reopenable evidence with index checksum, strong line digest, versioned selector and block digest. `--reopen` re-reads source bytes, re-runs the selector and marks any mismatch `stale`; it refuses another generation before reading raw. The synthetic fixture covers matching, multi-child, missing, conflict and multi-task shapes with no real transcript content.
+- Added `ase work delta` and `ase fixture-delta`: an explicit before/after comparison of two attempts of one project/task confirmed only by native dispatch joins. The report orders attempts by dispatch parent-record time rather than attempt label, shows signed count differences plus turn and episode-boundary changes with reopenable evidence, and rejects ambiguous, cross-project, unrelated-task, unconfirmed and unverifiable pairs before emitting any delta.
+- Added `ase analytics` and `ase fixture-analytics` (rule `runtime-analytics` / `runtime-analytics-v1`): model-by-project runtime reports over the P1 leaf/turn projection using nominal stored `usage.cost.total` with no repricing and no `stats.db` dependency. Call duration, time-to-first-token and the union of `[timestamp, completedAt)` clock intervals are reported with explicit coverage; missing cost, timing or model fields are counted, never zero-filled. Active-leaf, all-branch and abandoned turn/cost/duration totals are reconciled against P1 counts, project provenance comes from the journal tree layout with an explicit unknown group, and `ase analytics reopen` re-verifies generation-pinned evidence and stored runtime facts from raw bytes.
+
+### Fixed
+
+- Fixed `ase analytics project --start/--end` root selection: a scoped run now projects every root journal and its subagents instead of excluding journals whose session header predates the window. Pre-window journals contribute their in-window turns with complete branch context, and the report's `period` totals include only turns inside the half-open `message.timestamp` window while `totals` remains the unscoped all-branch reconciliation. `ase work project` keeps its separate header-time selection contract.
+- Fixed duration reconciliation at corpus scale: stored durations are accumulated as exact fixed-point nanoseconds, so the leaf/all/abandoned branch balance is exact instead of failing on float rounding of roughly 2e9 ms. Genuine imbalances still produce a nonzero residual; the cost reconciliation gate is unchanged.
+
 ## [0.3.0] - 2026-11-22
 
 ### Added

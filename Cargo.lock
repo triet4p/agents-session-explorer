@@ -3,9 +3,20 @@
 version = 4
 
 [[package]]
-name = "ase-cli"
-version = "0.3.0"
+name = "ase-adapter-omp-stock"
+version = "0.4.0"
 dependencies = [
+ "ase-core",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "ase-cli"
+version = "0.4.0"
+dependencies = [
+ "ase-adapter-omp-stock",
  "ase-core",
  "ase-delegation",
  "ase-index",
@@ -15,21 +26,24 @@ dependencies = [
  "ase-naming",
  "ase-postings",
  "ase-task",
+ "ase-work",
+ "rayon",
+ "serde",
  "serde_json",
  "zstd",
 ]
 
 [[package]]
 name = "ase-core"
-version = "0.3.0"
+version = "0.4.0"
 
 [[package]]
 name = "ase-delegation"
-version = "0.3.0"
+version = "0.4.0"
 
 [[package]]
 name = "ase-index"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ase-core",
  "ase-ingest",
@@ -40,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "ase-ingest"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ase-core",
  "memchr",
@@ -52,11 +66,11 @@ dependencies = [
 
 [[package]]
 name = "ase-markers"
-version = "0.3.0"
+version = "0.4.0"
 
 [[package]]
 name = "ase-motif"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ase-core",
  "ase-index",
@@ -69,11 +83,11 @@ dependencies = [
 
 [[package]]
 name = "ase-naming"
-version = "0.3.0"
+version = "0.4.0"
 
 [[package]]
 name = "ase-postings"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ase-core",
  "ase-index",
@@ -86,11 +100,22 @@ dependencies = [
 
 [[package]]
 name = "ase-task"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ase-delegation",
  "ase-markers",
  "ase-naming",
+]
+
+[[package]]
+name = "ase-work"
+version = "0.4.0"
+dependencies = [
+ "ase-core",
+ "ase-ingest",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

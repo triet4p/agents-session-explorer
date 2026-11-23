@@ -18,6 +18,11 @@
 //! and `fixture-motif` synthetic fixtures.
 
 use ase_core::{err, EventIdx, ProjectionKind, RawStore, Result, Role, SpanRef, NONE};
+use ase_work::{
+    aggregate, reconciled, JournalAnalytics, JournalProjection, JournalRow, ManifestEntry,
+    ReferenceRow, Window,
+};
+use rayon::prelude::*;
 use ase_index::{
     build, decode_corpus, sha256_hex, write_address, DecodedCorpus, FsRawStore, Index,
 };
@@ -29,11 +34,15 @@ use ase_postings::{
 use ase_naming::{SourceRef, Status};
 use ase_postings::reader::BlockRecord;
 use ase_task::{
-    Basis, DelegationEvidence, MarkerEvidence, MarkerLayer, NamingEvidence, NamingSignal,
-    PathEvidence, Resolution, Stance, Status as TaskStatus,
+    Basis, DelegationEvidence, Evidence as TaskEvidence, MarkerEvidence, MarkerLayer,
+    NamingEvidence, NamingSignal, PathEvidence, Resolution, Stance, Status as TaskStatus,
 };
 use ase_motif::membership::dispatch_input;
+use ase_adapter_omp_stock::{
+    path_eq, reopen, scan, ClaimsFile, Options as AdapterOptions, StockView, ViewEvent, ViewFile,
+};
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::fs;
@@ -68,7 +77,13 @@ fn main() {
         "fixture-markers" => cmd_fixture_markers(rest),
         "fixture-resolve" => cmd_fixture_resolve(rest),
         "fixture-dispatch" => cmd_fixture_dispatch(rest),
+        "fixture-delta" => cmd_fixture_delta(rest),
         "motif" => cmd_motif(rest),
+        "adapter" => cmd_adapter(rest),
+        "work" => cmd_work(rest),
+        "analytics" => cmd_analytics(rest),
+        "fixture-analytics" => cmd_fixture_analytics(rest),
+        "fixture-adapter" => cmd_fixture_adapter(rest),
         "fixture-motif" => cmd_fixture_motif(rest),
         other => Err(err(format!("unknown command: {other}"))),
     };
@@ -100,11 +115,38 @@ fn usage() {
          ase fixture-markers --out DIR\n\
          ase fixture-resolve --out DIR\n\
          ase fixture-dispatch --out DIR\n\
+         ase fixture-delta --out DIR\n\
          ase motif  [PROJECT|TASK|TOKEN]... [--tau F] [--k-min N] [--k-max N]\n\
                      [--max-gap N] [--band N] [--max-substitutions N]\n\
                      [--null-permutations N] [--min-tasks N] [--explain] [--json]\n\
                      (PROJECT|TASK addresses one exact sampling key; a bare\n\
                      TOKEN stays ambiguous when two projects share it)\n\
+         ase adapter omp-stock (--session ID | --file N | --all) [--limit N]\n\
+                     [--no-sidecars] [--out CLAIMS.json] [--explain] [--json]\n\
+         ase adapter omp-stock --reopen CLAIMS.json [--claim ID] [--json]\n\
+         ase work project [--index FILE] [--omp-root DIR] [--start ISO --end ISO]\n\
+                     [--out ROWS.jsonl] [--limit N] [--json]\n\
+         ase work session (--session ID | --file N) [--leaf ENTRY_ID]\n\
+                     [--omp-root DIR] [--out PROJECTION.json] [--json]\n\
+         ase work reopen PROJECTION.json [--index FILE] [--json]\n\
+         ase work compare --projection ROWS.jsonl --reference SOURCES.jsonl\n\
+                     [--out REPORT.json] [--json]\n\
+                     (leaf-aware Turn/Episode projection; task-agnostic;\n\
+                     resolver and motif membership are never read or written)\n\
+         ase work delta --task TOKEN [--project PROJECT] --before SESSION --after SESSION\n\
+                     [--omp-root DIR] [--out DELTA.json] [--before-out F] [--after-out F]\n\
+                     (explicit attempts of one dispatch-confirmed project/task;\n\
+                     task order by dispatch time, not by attempt label)\n\
+         ase analytics project [--index FILE] [--omp-root DIR] [--start ISO --end ISO]\n\
+                     [--out ROWS.jsonl] [--report REPORT.json] [--limit N] [--json]\n\
+         ase analytics session (--session ID | --file N) [--leaf ENTRY_ID]\n\
+                     [--omp-root DIR] [--out ROW.json] [--json]\n\
+         ase analytics reopen ROWS.jsonl [--index FILE] [--json]\n\
+         ase fixture-analytics --out DIR\n\
+                     (nominal stored cost, duration vs clock union, coverage;\n\
+                     no repricing and no stats.db dependency)\n\
+         ase fixture-adapter --out DIR\n\
+                     (advisory claims only; resolver and motif membership unchanged)\n\
          ase fixture-motif --out DIR\n\
          ase fixture-p0b --out DIR"
     );
@@ -3718,5 +3760,1870 @@ fn cmd_audit_markers(args: &[String]) -> Result<()> {
         ]
     });
     emit(&v, args);
+    Ok(())
+}
+
+// ---------------------------------------------------- OMP stock adapter
+
+struct AdapterView {
+    idx: Arc<Index>,
+    store: FsRawStore,
+    files: Vec<ViewFile>,
+    generation: String,
+    roots: Vec<String>,
+}
+
+fn adapter_abs_path(path: &str) -> String {
+    std::path::absolute(Path::new(path))
+        .unwrap_or_else(|_| PathBuf::from(path))
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn adapter_event(idx: &Index, event: u32) -> Result<ViewEvent> {
+    let e = idx.event(event)?;
+    Ok(ViewEvent {
+        event,
+        ordinal: e.ordinal(),
+        span: e.span(),
+        hash: e.hash(),
+        kind: e.kind(),
+        role: e.role(),
+        tag: e.tag().to_string(),
+    })
+}
+
+fn adapter_event_at(idx: &Index, span: SpanRef) -> Result<Option<ViewEvent>> {
+    match idx.event_at(span)? {
+        Some(event) => Ok(Some(adapter_event(idx, event)?)),
+        None => Ok(None),
+    }
+}
+
+impl StockView for AdapterView {
+    fn generation(&self) -> &str {
+        &self.generation
+    }
+
+    fn files(&self) -> &[ViewFile] {
+        &self.files
+    }
+
+    fn events(&self, file: u32) -> Result<Vec<ViewEvent>> {
+        let f = self.idx.file(file)?;
+        let mut out = Vec::with_capacity((f.event_end() - f.event_start()) as usize);
+        for event in f.event_start()..f.event_end() {
+            out.push(adapter_event(&self.idx, event)?);
+        }
+        Ok(out)
+    }
+
+    fn bytes(&self, file: u32) -> Result<Arc<[u8]>> {
+        self.store.bytes(file)
+    }
+
+    fn span_bytes(&self, span: SpanRef) -> Result<Vec<u8>> {
+        self.store.span(span)
+    }
+
+    fn event_at(&self, span: SpanRef) -> Result<Option<ViewEvent>> {
+        adapter_event_at(&self.idx, span)
+    }
+
+    fn session_header(&self, file: u32) -> Result<Option<ViewEvent>> {
+        let f = self.idx.file(file)?;
+        for event in f.event_start()..f.event_end() {
+            let e = adapter_event(&self.idx, event)?;
+            if e.kind == ase_core::EventKind::SessionMeta {
+                return Ok(Some(e));
+            }
+        }
+        Ok(None)
+    }
+
+    fn sidecar_bytes(&self, path: &str) -> Result<Option<Vec<u8>>> {
+        if !path.to_ascii_lowercase().ends_with(".md") {
+            return Ok(None);
+        }
+        let normalized = ase_adapter_omp_stock::normalize_path(path);
+        let allowed = self
+            .roots
+            .iter()
+            .any(|r| normalized.to_ascii_lowercase().starts_with(&r.to_ascii_lowercase()));
+        if !allowed {
+            return Ok(None);
+        }
+        let meta = match std::fs::metadata(&normalized) {
+            Ok(m) => m,
+            Err(_) => return Ok(None),
+        };
+        if meta.len() > 4 * 1024 * 1024 {
+            return Ok(None);
+        }
+        match std::fs::read(&normalized) {
+            Ok(b) => Ok(Some(b)),
+            Err(_) => Ok(None),
+        }
+    }
+}
+
+fn adapter_view(
+    args: &[String],
+    reopen_mode: bool,
+) -> Result<AdapterView> {
+    let (idx, store, published, _) = load_with_publication(args)?;
+    let generation = match &published {
+        Some(p) => p.generation.clone(),
+        None => format!(
+            "address-{}-{}-{}",
+            idx.build_ts, idx.file_count, idx.event_count
+        ),
+    };
+    let mut digests: std::collections::HashMap<u32, String> = std::collections::HashMap::new();
+    if let Some(p) = &published {
+        for f in &p.manifest.files {
+            digests.insert(f.id, f.digest.clone());
+        }
+    }
+    let mut all: Vec<ViewFile> = Vec::new();
+    for id in 0..idx.file_count {
+        let f = idx.file(id)?;
+        if f.provider().label() != "omp" {
+            continue;
+        }
+        all.push(ViewFile {
+            id,
+            path: adapter_abs_path(f.path()),
+            provider: f.provider(),
+            encoding: f.encoding(),
+            size: f.size(),
+            manifest_digest: digests.get(&id).cloned(),
+        });
+    }
+
+    let mut selected: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    if reopen_mode {
+        selected.extend(all.iter().map(|f| f.id));
+    } else if let Some(session) = opt(args, "--session") {
+        let sid = idx
+            .session_by_id(&session)
+            .ok_or_else(|| err(format!("unknown session: {session}")))?;
+        let s = idx.session(sid)?;
+        let parent_file = s.file();
+        let parent_path = all
+            .iter()
+            .find(|f| f.id == parent_file)
+            .map(|f| f.path.clone())
+            .ok_or_else(|| err("session file is not an OMP journal"))?;
+        selected.insert(parent_file);
+        let stem = parent_path
+            .strip_suffix(".jsonl.zst")
+            .or_else(|| parent_path.strip_suffix(".jsonl"))
+            .unwrap_or(&parent_path)
+            .replace('\\', "/");
+        let prefix = format!("{stem}/");
+        for f in &all {
+            if ase_adapter_omp_stock::normalize_path(&f.path).starts_with(&prefix) {
+                selected.insert(f.id);
+            }
+        }
+        for i in 0..idx.session_count {
+            let other = idx.session(i)?;
+            if other.file() != parent_file && path_eq(other.parent_id(), &parent_path) {
+                selected.insert(other.file());
+            }
+        }
+    } else if let Some(file) = opt(args, "--file") {
+        let file: u32 = file
+            .parse()
+            .map_err(|_| err("--file needs an integer file id"))?;
+        let parent_path = all
+            .iter()
+            .find(|f| f.id == file)
+            .map(|f| f.path.clone())
+            .ok_or_else(|| err("file is not an OMP journal"))?;
+        selected.insert(file);
+        let stem = parent_path
+            .strip_suffix(".jsonl.zst")
+            .or_else(|| parent_path.strip_suffix(".jsonl"))
+            .unwrap_or(&parent_path)
+            .replace('\\', "/");
+        let prefix = format!("{stem}/");
+        for f in &all {
+            if ase_adapter_omp_stock::normalize_path(&f.path).starts_with(&prefix) {
+                selected.insert(f.id);
+            }
+        }
+        for i in 0..idx.session_count {
+            let other = idx.session(i)?;
+            if other.file() != file && path_eq(other.parent_id(), &parent_path) {
+                selected.insert(other.file());
+            }
+        }
+    } else if has(args, "--all") {
+        selected.extend(all.iter().map(|f| f.id));
+    } else {
+        return Err(err(
+            "adapter omp-stock needs --session ID, --file N or --all",
+        ));
+    }
+
+    let files: Vec<ViewFile> = all
+        .into_iter()
+        .filter(|f| selected.contains(&f.id))
+        .collect();
+    let mut roots: Vec<String> = Vec::new();
+    for f in &files {
+        let normalized = ase_adapter_omp_stock::normalize_path(&f.path);
+        if let Some(at) = normalized.rfind('/') {
+            let root = normalized[..at].to_string();
+            if !roots.iter().any(|r| r.eq_ignore_ascii_case(&root)) {
+                roots.push(root);
+            }
+        }
+    }
+    Ok(AdapterView { idx, store, files, generation, roots })
+}
+
+fn cmd_adapter(args: &[String]) -> Result<()> {
+    if args.first().map(String::as_str) != Some("omp-stock") {
+        return Err(err("adapter needs a provider: omp-stock"));
+    }
+    let rest = &args[1..];
+    if let Some(path) = opt(rest, "--reopen") {
+        let bytes = fs::read(&path)
+            .map_err(|e| err(format!("read claims {}: {e}", path)))?;
+        let claims: ClaimsFile = serde_json::from_slice(&bytes)
+            .map_err(|e| err(format!("parse claims {}: {e}", path)))?;
+        let view = adapter_view(rest, true)?;
+        let report = reopen(&view, &claims, opt(rest, "--claim").as_deref())?;
+        let v = serde_json::to_value(&report)
+            .map_err(|e| err(format!("render reopen report: {e}")))?;
+        emit(&v, rest);
+        if report.status != "verified" {
+            std::process::exit(4);
+        }
+        return Ok(());
+    }
+
+    let options = AdapterOptions {
+        max_parent_files: parse_opt::<usize>(rest, "--limit")?,
+        read_sidecars: !has(rest, "--no-sidecars"),
+    };
+    let view = adapter_view(rest, false)?;
+    let report = scan(&view, &options)?;
+    if let Some(out) = opt(rest, "--out") {
+        let file = ClaimsFile {
+            adapter: report.adapter.clone(),
+            generation: report.generation.clone(),
+            evidence_selector_version: report.evidence_selector_version.clone(),
+            claims: report.claims.clone(),
+        };
+        let bytes = serde_json::to_vec_pretty(&file)
+            .map_err(|e| err(format!("serialize claims: {e}")))?;
+        fs::write(&out, bytes).map_err(|e| err(format!("write claims {out}: {e}")))?;
+    }
+    let v = serde_json::to_value(&report)
+        .map_err(|e| err(format!("render adapter report: {e}")))?;
+    emit(&v, rest);
+    Ok(())
+}
+
+
+// ------------------------------------------------------- P1 work projection
+
+struct WorkFile {
+    file_id: u32,
+    rel: String,
+    layout: ase_work::util::Layout,
+}
+
+struct SelectedWork {
+    files: Vec<WorkFile>,
+    root_journals_scanned: u64,
+    root_journals_selected: u64,
+    root_journals_outside_window: u64,
+    root_journals_missing_header: u64,
+}
+
+struct ProjectedWork {
+    projection: JournalProjection,
+    entry: ManifestEntry,
+}
+
+fn work_usage() {
+    println!(
+        "ase work project [--index FILE] [--omp-root DIR] [--start ISO --end ISO]\n\
+         [--out ROWS.jsonl] [--limit N] [--json]\n\
+         ase work session (--session ID | --file N) [--leaf ENTRY_ID] [--omp-root DIR]\n\
+         [--out PROJECTION.json] [--json]\n\
+         ase work reopen PROJECTION.json [--index FILE] [--json]\n\
+         ase work delta --task TOKEN [--project PROJECT] --before CHILD_SESSION_ID\n\
+         \n         --after CHILD_SESSION_ID [--omp-root DIR] [--out DELTA.json]\n\
+         \n         [--before-out FILE.json] [--after-out FILE.json] [--json]\n\
+         ase work compare --projection ROWS.jsonl --reference SOURCES.jsonl\n\
+         [--out REPORT.json] [--json]"
+    );
+}
+
+fn cmd_work(args: &[String]) -> Result<()> {
+    let Some(sub) = args.first().map(String::as_str) else {
+        work_usage();
+        return Err(err("work needs project, session, reopen, compare or delta"));
+    };
+    let rest = &args[1..];
+    if matches!(sub, "--help" | "-h") {
+        work_usage();
+        return Ok(());
+    }
+    match sub {
+        "project" => cmd_work_project(rest),
+        "session" => cmd_work_session(rest),
+        "reopen" => cmd_work_reopen(rest),
+        "compare" => cmd_work_compare(rest),
+        "delta" => cmd_work_delta(rest),
+        other => Err(err(format!("unknown work command: {other}"))),
+    }
+}
+
+fn load_work(args: &[String]) -> Result<(Arc<Index>, FsRawStore, String)> {
+    let pointer = index_path(args);
+    let address = match publication::open(&pointer) {
+        Ok(Some(published)) => published.address_path,
+        // A missing, tombstoned or mismatched derived layer never disables the
+        // address-only turn projection.
+        _ => pointer,
+    };
+    let idx = Arc::new(Index::open(&address)?);
+    let (_, digest) = publication::sha256_file(&address)?;
+    let generation = format!("index-sha256:{digest}");
+    let store = FsRawStore::new(idx.clone());
+    Ok((idx, store, generation))
+}
+
+fn parse_work_window(args: &[String]) -> Result<Option<Window>> {
+    let start = opt(args, "--start");
+    let end = opt(args, "--end");
+    match (start, end) {
+        (None, None) => Ok(None),
+        (Some(start), Some(end)) => {
+            let start_ms = ase_work::parse_ts_opt(Some(&start))
+                .ok_or_else(|| err(format!("invalid --start timestamp: {start}")))?;
+            let end_ms = ase_work::parse_ts_opt(Some(&end))
+                .ok_or_else(|| err(format!("invalid --end timestamp: {end}")))?;
+            if end_ms <= start_ms {
+                return Err(err("--end must be after --start"));
+            }
+            Ok(Some(Window { start_ms, end_ms }))
+        }
+        _ => Err(err("work project needs both --start and --end, or neither")),
+    }
+}
+
+fn header_events(idx: &Index) -> Result<std::collections::BTreeMap<u32, u32>> {
+    let mut out = std::collections::BTreeMap::new();
+    for session in 0..idx.session_count {
+        let s = idx.session(session)?;
+        if s.header() != NONE {
+            out.insert(s.file(), s.header());
+        }
+    }
+    Ok(out)
+}
+
+fn collect_work_files(
+    idx: &Index,
+    omp_root: &str,
+    window: Option<Window>,
+    limit: Option<usize>,
+) -> Result<SelectedWork> {
+    let headers = header_events(idx)?;
+    let mut roots: std::collections::BTreeMap<String, (u32, ase_work::util::Layout, bool)> =
+        std::collections::BTreeMap::new();
+    let mut subagents: Vec<WorkFile> = Vec::new();
+    let mut scanned = 0u64;
+    let mut outside = 0u64;
+    let mut missing = 0u64;
+    for file_id in 0..idx.file_count {
+        let file = idx.file(file_id)?;
+        if file.provider() != ase_core::Provider::Omp {
+            continue;
+        }
+        let Some(rel) = ase_work::relpath(file.path(), omp_root) else {
+            continue;
+        };
+        let Some(layout) = ase_work::layout(&rel) else {
+            continue;
+        };
+        if layout.kind == "root" {
+            scanned += 1;
+            let Some(header) = headers.get(&file_id) else {
+                missing += 1;
+                continue;
+            };
+            let ts = idx.event(*header)?.ts_ms();
+            if ts == 0 {
+                missing += 1;
+                continue;
+            }
+            if window.is_some_and(|w| !w.contains(ts)) {
+                outside += 1;
+                continue;
+            }
+            roots.insert(layout.tree_relpath.clone(), (file_id, layout, true));
+        } else {
+            subagents.push(WorkFile { file_id, rel, layout });
+        }
+    }
+    let selected_roots = roots.values().filter(|(_, _, selected)| *selected).count() as u64;
+    let mut files: Vec<WorkFile> = Vec::new();
+    for (file_id, layout, selected) in roots.values() {
+        if *selected {
+            files.push(WorkFile {
+                file_id: *file_id,
+                rel: layout.tree_relpath.clone(),
+                layout: layout.clone(),
+            });
+        }
+    }
+    for sub in subagents {
+        let Some((_, _, selected)) = roots.get(&sub.layout.tree_relpath) else {
+            continue;
+        };
+        if *selected {
+            files.push(sub);
+        }
+    }
+    files.sort_by(|a, b| a.rel.as_bytes().cmp(b.rel.as_bytes()));
+    if let Some(limit) = limit {
+        files.truncate(limit);
+    }
+    Ok(SelectedWork {
+        files,
+        root_journals_scanned: scanned,
+        root_journals_selected: selected_roots,
+        root_journals_outside_window: outside,
+        root_journals_missing_header: missing,
+    })
+}
+
+/// Analytics window selection follows the contracted `message.timestamp`
+/// period field, not the session-header event time. A root journal that began
+/// before the window can carry in-window turns, so a scoped analytics run
+/// projects every root (and its subagents) with complete branch context;
+/// `aggregate` builds its `period` totals from in-window turns only.
+/// `ase work project` keeps its separate header-time selection contract.
+fn collect_analytics_files(
+    idx: &Index,
+    omp_root: &str,
+    limit: Option<usize>,
+) -> Result<SelectedWork> {
+    let mut roots: std::collections::BTreeMap<String, (u32, ase_work::util::Layout)> =
+        std::collections::BTreeMap::new();
+    let mut subagents: Vec<WorkFile> = Vec::new();
+    let mut scanned = 0u64;
+    for file_id in 0..idx.file_count {
+        let file = idx.file(file_id)?;
+        if file.provider() != ase_core::Provider::Omp {
+            continue;
+        }
+        let Some(rel) = ase_work::relpath(file.path(), omp_root) else {
+            continue;
+        };
+        let Some(layout) = ase_work::layout(&rel) else {
+            continue;
+        };
+        if layout.kind == "root" {
+            scanned += 1;
+            roots.insert(layout.tree_relpath.clone(), (file_id, layout));
+        } else {
+            subagents.push(WorkFile { file_id, rel, layout });
+        }
+    }
+    let mut files: Vec<WorkFile> = roots
+        .values()
+        .map(|(file_id, layout)| WorkFile {
+            file_id: *file_id,
+            rel: layout.tree_relpath.clone(),
+            layout: layout.clone(),
+        })
+        .collect();
+    for sub in subagents {
+        if roots.contains_key(&sub.layout.tree_relpath) {
+            files.push(sub);
+        }
+    }
+    files.sort_by(|a, b| a.rel.as_bytes().cmp(b.rel.as_bytes()));
+    if let Some(limit) = limit {
+        files.truncate(limit);
+    }
+    Ok(SelectedWork {
+        files,
+        root_journals_scanned: scanned,
+        root_journals_selected: scanned,
+        root_journals_outside_window: 0,
+        root_journals_missing_header: 0,
+    })
+}
+
+fn validate_work_projection(idx: &Index, projection: &JournalProjection) -> Result<()> {
+    let check = |ev: &ase_work::EvidenceRef| -> Result<()> {
+        let event = idx.event(ev.event)?;
+        let expected = SpanRef { file: ev.span.file, off: ev.span.off, len: ev.span.len };
+        if event.span() != expected {
+            return Err(err(format!(
+                "projection evidence span differs from index at event {}",
+                ev.event
+            )));
+        }
+        if format!("{:016x}", event.hash()) != ev.index_checksum {
+            return Err(err(format!(
+                "projection evidence checksum differs from index at event {}",
+                ev.event
+            )));
+        }
+        Ok(())
+    };
+    if let Some(ev) = &projection.active_leaf.evidence {
+        check(ev)?;
+    }
+    for turn in &projection.turns {
+        check(&turn.evidence)?;
+    }
+    for episode in projection.episodes_primary.iter().chain(projection.episodes_wide.iter()) {
+        if let Some(ev) = &episode.evidence {
+            check(ev)?;
+        }
+    }
+    Ok(())
+}
+
+fn project_work_file(
+    idx: &Index,
+    store: &FsRawStore,
+    file: &WorkFile,
+    generation: &str,
+    window: Option<Window>,
+) -> Result<ProjectedWork> {
+    let view = idx.file(file.file_id)?;
+    let bytes = store.bytes(file.file_id)?;
+    let sha = ase_work::sha256_hex(&bytes);
+    let sid = ase_work::source_id(&file.rel);
+    let options = ase_work::ProjectOptions {
+        file_id: file.file_id,
+        path: view.path(),
+        source_id: &sid,
+        generation,
+        sha256: &sha,
+        event_base: view.event_start(),
+        explicit_leaf: None,
+        window,
+    };
+    let projection = ase_work::project_bytes(&options, &bytes)?;
+    validate_work_projection(idx, &projection)?;
+    let head_len = bytes.len().min(4096);
+    let tail_start = bytes.len().saturating_sub(4096);
+    let entry = ManifestEntry {
+        relpath: file.rel.clone(),
+        size: bytes.len() as u64,
+        sha256: sha.clone(),
+        head_sha256: ase_work::sha256_hex(&bytes[..head_len]),
+        tail_sha256: ase_work::sha256_hex(&bytes[tail_start..]),
+        kind: file.layout.kind.to_string(),
+        tree_relpath: file.layout.tree_relpath.clone(),
+        session_id: projection.header.session_id.clone(),
+        header_timestamp: projection.header.timestamp.clone(),
+        parent_session: projection.header.parent_session.clone(),
+        filename_timestamp: ase_work::filename_timestamp(&file.rel)
+            .map(ase_work::format_iso_ms),
+        header_ok: projection.header.header_ok,
+    };
+    Ok(ProjectedWork { projection, entry })
+}
+
+fn cmd_work_project(args: &[String]) -> Result<()> {
+    let (idx, store, generation) = load_work(args)?;
+    let window = parse_work_window(args)?;
+    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| DEFAULT_OMP.to_string());
+    let limit = opt(args, "--limit").and_then(|s| s.parse::<usize>().ok());
+    let selected = collect_work_files(&idx, &omp_root, window, limit)?;
+    let projected: Vec<ProjectedWork> = selected
+        .files
+        .par_iter()
+        .map(|file| project_work_file(&idx, &store, file, &generation, window))
+        .collect::<Result<Vec<_>>>()?;
+
+    let mut rows: Vec<JournalRow> = Vec::with_capacity(projected.len());
+    let mut counts = ase_work::AggregateCounts::default();
+    let mut entries: Vec<ManifestEntry> = Vec::with_capacity(projected.len());
+    let mut filename_header_mismatches = 0u64;
+    let mut subagent_headers_missing = 0u64;
+    for item in &projected {
+        let tree_id = ase_work::source_id(&item.entry.tree_relpath);
+        let row = JournalRow::from_projection(&item.projection, &item.entry.kind, &tree_id);
+        counts.add(&row, item.entry.size);
+        if let (Some(filename), Some(header)) =
+            (&item.entry.filename_timestamp, &item.entry.header_timestamp)
+        {
+            if filename != header {
+                filename_header_mismatches += 1;
+            }
+        }
+        if item.entry.kind == "subagent" && !item.entry.header_ok {
+            subagent_headers_missing += 1;
+        }
+        rows.push(row);
+        entries.push(item.entry.clone());
+    }
+    entries.sort_by(|a, b| a.relpath.as_bytes().cmp(b.relpath.as_bytes()));
+    let manifest = ase_work::manifest_digest(&entries);
+    let snapshot = ase_work::CohortSnapshot {
+        manifest_sha256: manifest.clone(),
+        files: counts.files,
+        root_files: counts.root_files,
+        subagent_files: counts.subagent_files,
+        bytes: counts.bytes,
+        root_journals_scanned: selected.root_journals_scanned,
+        root_journals_selected: selected.root_journals_selected,
+        root_journals_outside_window: selected.root_journals_outside_window,
+        root_journals_missing_header: selected.root_journals_missing_header,
+        filename_header_mismatches,
+        subagent_headers_missing,
+    };
+
+    if let Some(out) = opt(args, "--out") {
+        let mut content = String::new();
+        for row in &rows {
+            content.push_str(
+                &serde_json::to_string(row)
+                    .map_err(|e| err(format!("serialize work row: {e}")))?,
+            );
+            content.push('\n');
+        }
+        fs::write(&out, content).map_err(|e| err(format!("write work rows {out}: {e}")))?;
+    }
+
+    let window_value = window.map(|w| {
+        json!({
+            "start": ase_work::format_iso_ms(w.start_ms),
+            "end": ase_work::format_iso_ms(w.end_ms),
+            "end_exclusive": true
+        })
+    });
+    let value = json!({
+        "command": "work project",
+        "status": "ok",
+        "adapter": "omp-stock",
+        "rule": ase_work::WORK_RULE,
+        "rule_version": ase_work::WORK_VERSION,
+        "compatible_reference_rule": ase_work::COMPATIBLE_REFERENCE_RULE,
+        "generation": generation,
+        "window": window_value,
+        "selection_rule": "source tree = root journal <project>/<name>.jsonl plus every *.jsonl under <project>/<name>/; selected when root session timestamp is in [start, end) UTC; all files of a selected tree are read",
+        "task_dependency": "none",
+        "resolver_membership": "not_read",
+        "limited": limit.is_some(),
+        "snapshot": snapshot,
+        "counts": counts,
+        "journals_written": rows.len(),
+        "journals": if has(args, "--json") {
+            Value::Array(rows.iter().map(|r| serde_json::to_value(r).unwrap()).collect())
+        } else {
+            Value::Array(Vec::new())
+        }
+    });
+    emit(&value, args);
+    Ok(())
+}
+
+fn cmd_work_session(args: &[String]) -> Result<()> {
+    let (idx, store, generation) = load_work(args)?;
+    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| DEFAULT_OMP.to_string());
+    let file_id = if let Some(session) = opt(args, "--session") {
+        let session_idx = idx
+            .session_by_id(&session)
+            .ok_or_else(|| err(format!("session not found in address index: {session}")))?;
+        idx.session(session_idx)?.file()
+    } else if let Some(file) = opt(args, "--file").and_then(|s| s.parse::<u32>().ok()) {
+        file
+    } else {
+        return Err(err("work session needs --session ID or --file N"));
+    };
+    let view = idx.file(file_id)?;
+    let rel = ase_work::relpath(view.path(), &omp_root)
+        .unwrap_or_else(|| ase_work::util::slash_path(view.path()));
+    let bytes = store.bytes(file_id)?;
+    let sha = ase_work::sha256_hex(&bytes);
+    let sid = ase_work::source_id(&rel);
+    let leaf = opt(args, "--leaf");
+    let options = ase_work::ProjectOptions {
+        file_id,
+        path: view.path(),
+        source_id: &sid,
+        generation: &generation,
+        sha256: &sha,
+        event_base: view.event_start(),
+        explicit_leaf: leaf.as_deref(),
+        window: None,
+    };
+    let projection = ase_work::project_bytes(&options, &bytes)?;
+    validate_work_projection(&idx, &projection)?;
+    if let Some(out) = opt(args, "--out") {
+        let content = serde_json::to_vec_pretty(&projection)
+            .map_err(|e| err(format!("serialize projection: {e}")))?;
+        fs::write(&out, content).map_err(|e| err(format!("write projection {out}: {e}")))?;
+    }
+    let value = json!({
+        "command": "work session",
+        "status": "ok",
+        "generation": generation,
+        "task_dependency": "none",
+        "resolver_membership": "not_read",
+        "projection": projection
+    });
+    emit(&value, args);
+    Ok(())
+}
+
+fn cmd_work_reopen(args: &[String]) -> Result<()> {
+    let path = opt(args, "--projection")
+        .or_else(|| positional(args))
+        .ok_or_else(|| err("work reopen needs PROJECTION.json"))?;
+    let bytes = fs::read(&path).map_err(|e| err(format!("read projection {path}: {e}")))?;
+    let projection: JournalProjection = serde_json::from_slice(&bytes)
+        .map_err(|e| err(format!("parse projection {path}: {e}")))?;
+    let (idx, store, generation) = load_work(args)?;
+    let view = idx.file(projection.file_id)?;
+    let mut report = if view.path() == projection.path {
+        let raw = store.bytes(projection.file_id)?;
+        ase_work::reopen_bytes(&projection, &raw, &generation)
+    } else {
+        let mut report = ase_work::ReopenReport {
+            status: "stale".to_string(),
+            generation,
+            file_id: projection.file_id,
+            source_id: projection.source_id.clone(),
+            ..ase_work::ReopenReport::default()
+        };
+        report
+            .errors
+            .push("file_mapping_mismatch:index maps this file id to another path".to_string());
+        report
+    };
+    if report.status == "verified" {
+        report.errors.clear();
+    }
+    let value = serde_json::to_value(&report)
+        .map_err(|e| err(format!("render reopen report: {e}")))?;
+    emit(&value, args);
+    match report.status.as_str() {
+        "verified" => Ok(()),
+        "generation_mismatch" => std::process::exit(4),
+        _ => std::process::exit(3),
+    }
+}
+
+fn read_jsonl<T: serde::de::DeserializeOwned>(path: &str) -> Result<Vec<T>> {
+    let bytes = fs::read(path).map_err(|e| err(format!("read {path}: {e}")))?;
+    let text = String::from_utf8(bytes).map_err(|e| err(format!("read {path}: {e}")))?;
+    let mut out = Vec::new();
+    for (line_no, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        out.push(
+            serde_json::from_str::<T>(line)
+                .map_err(|e| err(format!("parse {path}:{}: {e}", line_no + 1)))?,
+        );
+    }
+    Ok(out)
+}
+
+fn cmd_work_compare(args: &[String]) -> Result<()> {
+    let projection = opt(args, "--projection")
+        .ok_or_else(|| err("work compare needs --projection ROWS.jsonl"))?;
+    let reference = opt(args, "--reference")
+        .ok_or_else(|| err("work compare needs --reference SOURCES.jsonl"))?;
+    let product: Vec<JournalRow> = read_jsonl(&projection)?;
+    let expected: Vec<ReferenceRow> = read_jsonl(&reference)?;
+    let report = ase_work::compare(&product, &expected)
+        .map_err(|e| err(format!("compare: {e}")))?;
+    if let Some(out) = opt(args, "--out") {
+        let content = serde_json::to_vec_pretty(&report)
+            .map_err(|e| err(format!("serialize comparison: {e}")))?;
+        fs::write(&out, content).map_err(|e| err(format!("write comparison {out}: {e}")))?;
+    }
+    let value = serde_json::to_value(&report)
+        .map_err(|e| err(format!("render comparison: {e}")))?;
+    emit(&value, args);
+    if !report.strict_relative_error_below_1_percent || !report.cohort_match {
+        std::process::exit(3);
+    }
+    Ok(())
+}
+
+// ------------------------------------------- P1 explicit attempt delta
+
+const DELTA_PARENT_SESSION: &str = "s4t3-parent";
+const D_DELTA_BEFORE: &str = "ab000001-0000-4000-8000-000000000001";
+const D_DELTA_AFTER: &str = "ab000002-0000-4000-8000-000000000002";
+const D_DELTA_LATEST: &str = "ab000003-0000-4000-8000-000000000003";
+const D_DELTA_CROSS: &str = "ab000004-0000-4000-8000-000000000004";
+const D_DELTA_OTHER: &str = "ab000005-0000-4000-8000-000000000005";
+
+fn delta_ts(day: u32, second: u32) -> String {
+    format!("2026-10-{day:02}T00:00:{second:02}.000Z")
+}
+
+fn delta_session_line(id: &str, ts: &str) -> String {
+    format!(
+        "{}\n",
+        json!({
+            "type": "session", "version": 3, "id": id, "timestamp": ts,
+            "cwd": "C:\\SYNTHETIC\\s4t3", "title": "synthetic attempt-delta fixture"
+        })
+    )
+}
+
+fn delta_parent_line(
+    dispatch_id: &str,
+    project: &str,
+    task: &str,
+    attempt: &str,
+    spawn_index: u32,
+    ts: &str,
+) -> String {
+    format!(
+        "{}\n",
+        json!({
+            "type": "custom", "timestamp": ts, "customType": "task_dispatch_v1",
+            "data": {
+                "dispatch_id": dispatch_id,
+                "parent_session_id": DELTA_PARENT_SESSION,
+                "parent_tool_call_id": format!("call-{spawn_index}"),
+                "spawn_index": spawn_index,
+                "project_id": project,
+                "task_id": task,
+                "attempt_id": attempt
+            }
+        })
+    )
+}
+
+fn delta_child_link_line(dispatch_id: &str, session_id: &str, ts: &str) -> String {
+    format!(
+        "{}\n",
+        json!({
+            "type": "custom", "timestamp": ts, "customType": "task_dispatch_child_v1",
+            "data": { "dispatch_id": dispatch_id, "session_id": session_id }
+        })
+    )
+}
+
+fn delta_message_line(
+    id: &str,
+    parent: Option<&str>,
+    ts: &str,
+    role: &str,
+    usage: bool,
+    tool_calls: u32,
+) -> String {
+    let content: Vec<Value> = if tool_calls > 0 {
+        (1..=tool_calls)
+            .map(|index| {
+                json!({
+                    "type": "toolCall", "id": format!("c{index}"),
+                    "name": "read", "arguments": {}
+                })
+            })
+            .collect()
+    } else {
+        vec![json!({"type": "text", "text": "synthetic delta fixture entry"})]
+    };
+    let mut message = json!({"role": role, "content": content});
+    if usage {
+        message["usage"] = json!({"totalTokens": 1});
+        message["stopReason"] = json!("stop");
+    }
+    let mut record = json!({"type": "message", "id": id, "timestamp": ts, "message": message});
+    if let Some(parent) = parent {
+        record["parentId"] = json!(parent);
+    }
+    format!("{record}\n")
+}
+
+fn delta_tool_result_line(id: &str, parent: &str, ts: &str, call_id: &str) -> String {
+    format!(
+        "{}\n",
+        json!({
+            "type": "message", "id": id, "parentId": parent, "timestamp": ts,
+            "message": {
+                "role": "toolResult", "toolCallId": call_id, "toolName": "read",
+                "content": [{"type": "text", "text": "synthetic delta fixture result"}]
+            }
+        })
+    )
+}
+
+fn delta_custom_user_line(id: &str, parent: &str, ts: &str) -> String {
+    format!(
+        "{}\n",
+        json!({
+            "type": "custom_message", "customType": "synthetic-user-note",
+            "attribution": "user", "id": id, "parentId": parent, "timestamp": ts,
+            "content": "synthetic wide boundary"
+        })
+    )
+}
+
+fn delta_prose_candidate_line(id: &str, parent: Option<&str>, ts: &str) -> String {
+    let mut record = json!({
+        "type": "message", "id": id, "timestamp": ts,
+        "message": {
+            "role": "user",
+            "content": [{"type": "text", "text": "synthetic mention task_id=T701 without dispatch"}]
+        }
+    });
+    if let Some(parent) = parent {
+        record["parentId"] = json!(parent);
+    }
+    format!("{record}\n")
+}
+
+/// Synthetic, producer-shaped OMP journals for a deterministic delta check.
+/// Two same-task attempts have visibly different turns and episode
+/// boundaries; a later attempt carries a smaller label to prove labels are
+/// not chronology. A cross-project same-token attempt, another-task attempt
+/// and an unconfirmed prose-only session exercise the rejections.
+fn cmd_fixture_delta(args: &[String]) -> Result<()> {
+    let out = PathBuf::from(
+        opt(args, "--out").ok_or_else(|| err("fixture-delta needs --out DIR"))?,
+    );
+    let omp = out.join("omp");
+    let codex = out.join("codex");
+    let dir = omp.join("s4t3");
+    fs::create_dir_all(&dir).map_err(|e| err(format!("create {}: {e}", dir.display())))?;
+    fs::create_dir_all(&codex).map_err(|e| err(format!("create {}: {e}", codex.display())))?;
+    let write = |name: &str, content: String| -> Result<()> {
+        let path = dir.join(name);
+        fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))
+    };
+
+    let mut parent = delta_session_line(DELTA_PARENT_SESSION, &delta_ts(1, 0));
+    parent.push_str(&delta_parent_line(D_DELTA_BEFORE, "S31", "T701", "1", 0, &delta_ts(1, 0)));
+    parent.push_str(&delta_parent_line(D_DELTA_AFTER, "S31", "T701", "2", 1, &delta_ts(2, 0)));
+    parent.push_str(&delta_parent_line(D_DELTA_LATEST, "S31", "T701", "0", 2, &delta_ts(3, 0)));
+    parent.push_str(&delta_parent_line(D_DELTA_CROSS, "S32", "T701", "1", 3, &delta_ts(1, 0)));
+    parent.push_str(&delta_parent_line(D_DELTA_OTHER, "S31", "T702", "1", 4, &delta_ts(1, 0)));
+    parent.push_str(&delta_message_line("p-u1", None, &delta_ts(1, 1), "user", false, 0));
+    write("parent.jsonl", parent)?;
+
+    let mut before = delta_session_line("s4t3-before", &delta_ts(1, 0));
+    before.push_str(&delta_child_link_line(D_DELTA_BEFORE, "s4t3-before", &delta_ts(1, 1)));
+    before.push_str(&delta_message_line("u1", None, &delta_ts(1, 2), "user", false, 0));
+    before.push_str(&delta_message_line("a1", Some("u1"), &delta_ts(1, 3), "assistant", true, 0));
+    write("child-before.jsonl", before)?;
+
+    let mut after = delta_session_line("s4t3-after", &delta_ts(2, 0));
+    after.push_str(&delta_child_link_line(D_DELTA_AFTER, "s4t3-after", &delta_ts(2, 1)));
+    after.push_str(&delta_message_line("u1", None, &delta_ts(2, 2), "user", false, 0));
+    after.push_str(&delta_message_line("a1", Some("u1"), &delta_ts(2, 3), "assistant", true, 2));
+    after.push_str(&format!(
+        "{}\n",
+        json!({
+            "type": "custom", "customType": "tool_execution_start", "id": "x1",
+            "parentId": "a1", "timestamp": delta_ts(2, 4), "data": {}
+        })
+    ));
+    after.push_str(&delta_tool_result_line("r1", "x1", &delta_ts(2, 5), "c1"));
+    after.push_str(&delta_message_line("u2", Some("r1"), &delta_ts(2, 6), "user", false, 0));
+    after.push_str(&delta_custom_user_line("cm1", "u2", &delta_ts(2, 7)));
+    after.push_str(&delta_message_line("a2", Some("cm1"), &delta_ts(2, 8), "assistant", true, 0));
+    write("child-after.jsonl", after)?;
+
+    let mut latest = delta_session_line("s4t3-latest", &delta_ts(3, 0));
+    latest.push_str(&delta_child_link_line(D_DELTA_LATEST, "s4t3-latest", &delta_ts(3, 1)));
+    latest.push_str(&delta_message_line("u1", None, &delta_ts(3, 2), "user", false, 0));
+    latest.push_str(&delta_message_line("b1", Some("u1"), &delta_ts(3, 3), "assistant", true, 0));
+    latest.push_str(&delta_message_line("u2", Some("b1"), &delta_ts(3, 4), "user", false, 0));
+    latest.push_str(&delta_message_line("b2", Some("u2"), &delta_ts(3, 5), "assistant", true, 0));
+    write("child-latest.jsonl", latest)?;
+
+    let mut cross = delta_session_line("s4t3-cross", &delta_ts(1, 0));
+    cross.push_str(&delta_child_link_line(D_DELTA_CROSS, "s4t3-cross", &delta_ts(1, 1)));
+    cross.push_str(&delta_message_line("u1", None, &delta_ts(1, 2), "user", false, 0));
+    cross.push_str(&delta_message_line("a1", Some("u1"), &delta_ts(1, 3), "assistant", true, 0));
+    write("child-cross.jsonl", cross)?;
+
+    let mut other = delta_session_line("s4t3-other-task", &delta_ts(1, 0));
+    other.push_str(&delta_child_link_line(D_DELTA_OTHER, "s4t3-other-task", &delta_ts(1, 1)));
+    other.push_str(&delta_message_line("u1", None, &delta_ts(1, 2), "user", false, 0));
+    other.push_str(&delta_message_line("a1", Some("u1"), &delta_ts(1, 3), "assistant", true, 0));
+    write("child-other-task.jsonl", other)?;
+
+    let mut unconfirmed = delta_session_line("s4t3-unconfirmed", &delta_ts(1, 0));
+    unconfirmed.push_str(&delta_prose_candidate_line("u1", None, &delta_ts(1, 2)));
+    unconfirmed.push_str(&delta_message_line("a1", Some("u1"), &delta_ts(1, 3), "assistant", true, 0));
+    write("child-unconfirmed.jsonl", unconfirmed)?;
+
+    println!(
+        "wrote 7 synthetic P1 attempt-delta OMP fixtures to {}",
+        out.display()
+    );
+    Ok(())
+}
+
+/// Raw dispatch records for one submitted session, always labelled as claims
+/// rather than membership. Used only for rejection diagnostics.
+fn delta_observed_claims(input: &ase_task::DispatchInput, session_id: &str) -> Vec<Value> {
+    input
+        .children
+        .iter()
+        .filter(|link| link.session_id == session_id && link.containing_session_id == session_id)
+        .map(|link| {
+            let parent = input.parents.iter().find(|claim| {
+                claim.dispatch_id == link.dispatch_id
+                    && claim.containing_session_id == claim.parent_session_id
+            });
+            json!({
+                "dispatch_id": &link.dispatch_id,
+                "child_session_id": &link.session_id,
+                "child_span": &link.span,
+                "child_event": link.event,
+                "parent_session_id": parent.map(|p| p.parent_session_id.clone()),
+                "project": parent.map(|p| p.project.clone()),
+                "task": parent.map(|p| p.task.clone()),
+                "attempt": parent.map(|p| p.attempt.clone()),
+                "parent_span": parent.map(|p| p.span.clone()),
+                "label": "observed_dispatch_claim_not_membership"
+            })
+        })
+        .collect()
+}
+
+fn work_delta_reject(
+    args: &[String],
+    task: &str,
+    project: Option<&str>,
+    before: &str,
+    after: &str,
+    reason: &str,
+    detail: &str,
+    resolution: Option<&ase_task::Resolution>,
+    claims: Value,
+) -> ! {
+    let admitted: Vec<Value> = resolution
+        .map(|found| {
+            found
+                .evidence
+                .iter()
+                .filter_map(|evidence| match evidence {
+                    TaskEvidence::Dispatch(join) => Some(json!({
+                        "dispatch_id": join.dispatch_id,
+                        "project": join.project,
+                        "task": join.task,
+                        "attempt": join.attempt,
+                        "child_session_id": join.child_session_id,
+                        "parent_span": join.parent_span,
+                        "child_span": join.child_span
+                    })),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let candidates: Vec<Value> = resolution
+        .map(|found| {
+            found
+                .candidates
+                .iter()
+                .map(|candidate| {
+                    json!({
+                        "project": candidate.project,
+                        "task": candidate.task,
+                        "task_key": candidate.task_key,
+                        "state": candidate.state.label(),
+                        "reason": candidate.reason
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let value = json!({
+        "command": "work delta",
+        "status": "rejected",
+        "reason": reason,
+        "detail": detail,
+        "task": task,
+        "project": project,
+        "before": before,
+        "after": after,
+        "rule": ase_work::DELTA_RULE,
+        "rule_version": ase_work::DELTA_VERSION,
+        "membership_rule": ase_task::DISPATCH_RULE_NAME,
+        "membership_rule_version": ase_task::DISPATCH_RULE_VERSION,
+        "dispatch": resolution.map(|found| json!({
+            "status": found.status.label(),
+            "task_key": found.task_key,
+            "summary": found.summary,
+            "parents_indexed": found.dispatch.parents,
+            "child_links_indexed": found.dispatch.children,
+            "unique_joins": found.dispatch.joined,
+            "rejected_groups": found.dispatch.rejected_groups,
+            "record_issues": found.dispatch.issues_total
+        })).unwrap_or(Value::Null),
+        "admitted_attempts": admitted,
+        "candidates": candidates,
+        "observed_claims": claims,
+        "guarantees": [
+            "Both sides must be executing child sessions of admitted dispatch-v1 joins for the same project/task key; no naming, marker, adapter or motif candidate can confirm membership.",
+            "A bare token with two project scopes is ambiguous and rejected; a session whose raw claim names another task/project is rejected as a task mismatch.",
+            "Attempt order uses dispatch parent-record time with deterministic tie-breaks; attempt labels are displayed but never used as chronology.",
+            "No delta is produced for a rejected pair, and no source, index, resolver or membership store is written."
+        ]
+    });
+    emit(&value, args);
+    std::process::exit(3);
+}
+
+fn project_delta_attempt(
+    idx: &Index,
+    store: &FsRawStore,
+    generation: &str,
+    join: &ase_task::DispatchJoin,
+    omp_root: &str,
+    out_path: Option<&str>,
+) -> Result<(JournalProjection, ase_work::DeltaAttemptRef, ase_work::ReopenReport)> {
+    let file_id = join.child_file_id;
+    let view = idx.file(file_id)?;
+    let bytes = store.bytes(file_id)?;
+    let sha = ase_work::sha256_hex(&bytes);
+    let rel = ase_work::relpath(view.path(), omp_root)
+        .unwrap_or_else(|| ase_work::util::slash_path(view.path()));
+    let sid = ase_work::source_id(&rel);
+    let options = ase_work::ProjectOptions {
+        file_id,
+        path: view.path(),
+        source_id: &sid,
+        generation,
+        sha256: &sha,
+        event_base: view.event_start(),
+        explicit_leaf: None,
+        window: None,
+    };
+    let projection = ase_work::project_bytes(&options, &bytes)?;
+    validate_work_projection(idx, &projection)?;
+    let reopen = ase_work::reopen_bytes(&projection, &bytes, generation);
+    let membership = ase_work::DeltaAttemptRef {
+        session_id: join.child_session_id.clone(),
+        dispatch_id: join.dispatch_id.clone(),
+        project: join.project.clone(),
+        task: join.task.clone(),
+        attempt: join.attempt.clone(),
+        parent_session_id: join.parent_session_id.clone(),
+        parent_span: join.parent_span.clone(),
+        child_span: join.child_span.clone(),
+    };
+    if let Some(path) = out_path {
+        let content = serde_json::to_vec_pretty(&projection)
+            .map_err(|e| err(format!("serialize attempt projection: {e}")))?;
+        fs::write(path, content).map_err(|e| err(format!("write projection {path}: {e}")))?;
+    }
+    Ok((projection, membership, reopen))
+}
+
+fn cmd_work_delta(args: &[String]) -> Result<()> {
+    let task = opt(args, "--task")
+        .ok_or_else(|| err("work delta needs --task TOKEN"))?;
+    let project = opt(args, "--project");
+    let before_session = opt(args, "--before")
+        .ok_or_else(|| err("work delta needs --before CHILD_SESSION_ID"))?;
+    let after_session = opt(args, "--after")
+        .ok_or_else(|| err("work delta needs --after CHILD_SESSION_ID"))?;
+    if before_session == after_session {
+        work_delta_reject(
+            args, &task, project.as_deref(), &before_session, &after_session,
+            "same_attempt", "before and after name the same executing child session",
+            None, json!({}),
+        );
+    }
+    let (idx, store, generation) = load_work(args)?;
+    let dispatch = dispatch_input(&idx, &store)?;
+    let resolution = ase_task::resolve(&ase_task::Input {
+        token: task.clone(),
+        project: project.clone(),
+        naming: Vec::new(),
+        markers: Vec::new(),
+        delegations: Vec::new(),
+        paths: Vec::new(),
+        dispatch: dispatch.clone(),
+        marker_layer: ase_task::MarkerLayer {
+            generation: None,
+            unavailable: Some(
+                "attempt delta membership is derived from native dispatch records only".to_string(),
+            ),
+            blocks_total: 0,
+            blocks_scanned: 0,
+            excluded_role_blocks: 0,
+            unverified_blocks: 0,
+        },
+    });
+    if resolution.status != TaskStatus::Assigned {
+        let reason = if resolution.status == TaskStatus::Ambiguous {
+            "ambiguous_membership"
+        } else {
+            "unconfirmed_membership"
+        };
+        let detail = if reason == "ambiguous_membership" {
+            format!("task token {task} has more than one project-scoped dispatch key; pass --project to select one")
+        } else {
+            format!("task token {task} has no unique admitted dispatch membership")
+        };
+        work_delta_reject(
+            args, &task, project.as_deref(), &before_session, &after_session,
+            reason, &detail, Some(&resolution), json!({}),
+        );
+    }
+
+    let mut seen: BTreeSet<(String, String)> = BTreeSet::new();
+    let joins: Vec<&ase_task::DispatchJoin> = resolution
+        .evidence
+        .iter()
+        .filter_map(|evidence| match evidence {
+            TaskEvidence::Dispatch(join)
+                if join.task == task
+                    && project.as_deref().is_none_or(|scope| scope == join.project) =>
+            {
+                let key = (join.dispatch_id.clone(), join.child_session_id.clone());
+                if seen.insert(key) { Some(join) } else { None }
+            }
+            _ => None,
+        })
+        .collect();
+    let before_join = joins.iter().find(|join| join.child_session_id == before_session).copied();
+    let after_join = joins.iter().find(|join| join.child_session_id == after_session).copied();
+    if before_join.is_none() || after_join.is_none() {
+        let empty: Vec<Value> = Vec::new();
+        let claims = json!({
+            "before": delta_observed_claims(&dispatch, &before_session),
+            "after": delta_observed_claims(&dispatch, &after_session)
+        });
+        let mismatch = claims
+            .get("before")
+            .and_then(Value::as_array)
+            .unwrap_or(&empty)
+            .iter()
+            .chain(
+                claims
+                    .get("after")
+                    .and_then(Value::as_array)
+                    .unwrap_or(&empty)
+                    .iter(),
+            )
+            .any(|claim| {
+                claim["task"].as_str() != Some(task.as_str())
+                    || project
+                        .as_deref()
+                        .is_some_and(|scope| claim["project"].as_str() != Some(scope))
+            });
+        let (reason, detail) = if mismatch {
+            (
+                "task_mismatch",
+                "a submitted session has an observed dispatch claim for another task or project; it is not membership for this task key",
+            )
+        } else {
+            (
+                "unconfirmed_membership",
+                "a submitted session has no admitted dispatch join for this project/task key; candidates and prose mentions are not membership",
+            )
+        };
+        work_delta_reject(
+            args, &task, project.as_deref(), &before_session, &after_session,
+            reason, detail, Some(&resolution), claims,
+        );
+    }
+    let before_join = before_join.expect("checked above");
+    let after_join = after_join.expect("checked above");
+
+    let mut keys = Vec::with_capacity(joins.len());
+    for join in &joins {
+        let ts_ms = idx.event(join.parent_event)?.ts_ms();
+        keys.push(ase_work::AttemptOrderKey {
+            session_id: join.child_session_id.clone(),
+            dispatch_id: join.dispatch_id.clone(),
+            attempt: join.attempt.clone(),
+            dispatch_timestamp: Some(ase_work::format_iso_ms(ts_ms)),
+            dispatch_ts_ms: ts_ms,
+            spawn_index: join.spawn_index,
+        });
+    }
+    let order = ase_work::order_attempts(&keys, &before_session, &after_session)?;
+    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| DEFAULT_OMP.to_string());
+    let before_out = opt(args, "--before-out");
+    let after_out = opt(args, "--after-out");
+    let (before_projection, before_membership, before_reopen) = project_delta_attempt(
+        &idx, &store, &generation, before_join, &omp_root, before_out.as_deref(),
+    )?;
+    let (after_projection, after_membership, after_reopen) = project_delta_attempt(
+        &idx, &store, &generation, after_join, &omp_root, after_out.as_deref(),
+    )?;
+    let claims = json!({
+        "before": delta_observed_claims(&dispatch, &before_session),
+        "after": delta_observed_claims(&dispatch, &after_session)
+    });
+    if before_reopen.status != "verified" || after_reopen.status != "verified" {
+        work_delta_reject(
+            args, &task, project.as_deref(), &before_session, &after_session,
+            "evidence_unverified", "an attempt projection did not reopen against the pinned index and raw bytes",
+            Some(&resolution), claims,
+        );
+    }
+    let delta = ase_work::attempt_delta(
+        &before_projection,
+        &after_projection,
+        before_membership,
+        after_membership,
+        order,
+    );
+    let index_label = index_path(args).to_string_lossy().to_string();
+    let mut value = serde_json::to_value(&delta)
+        .map_err(|e| err(format!("render attempt delta: {e}")))?;
+    let report = value
+        .as_object_mut()
+        .ok_or_else(|| err("attempt delta did not render as an object"))?;
+    report.insert("command".to_string(), json!("work delta"));
+    report.insert("status".to_string(), json!("ok"));
+    report.insert("omp_root".to_string(), json!(omp_root));
+    report.insert("observed_claims".to_string(), claims);
+    report.insert(
+        "evidence_reopen".to_string(),
+        json!({
+            "before": before_reopen,
+            "after": after_reopen,
+            "projection_files": { "before": before_out, "after": after_out }
+        }),
+    );
+    report.insert(
+        "reopen_commands".to_string(),
+        json!({
+            "before": before_out.as_ref().map(|p| format!("ase work reopen {p} --index {index_label}")),
+            "after": after_out.as_ref().map(|p| format!("ase work reopen {p} --index {index_label}"))
+        }),
+    );
+    report.insert(
+        "guarantees".to_string(),
+        json!([
+            "Membership comes only from admitted task-dispatch-provenance / dispatch-v1 joins; adapter claims, motif membership, naming, markers, path hits and parentSession edges are never membership inputs.",
+            "Both sides are executing child sessions of one confirmed project/task key; a cross-project same-token attempt, an unrelated task and an unconfirmed candidate are rejected before any delta is computed.",
+            "Ordering is dispatch parent-record time with spawn_index/dispatch_id/session tie-breaks; attempt labels are labels, not chronology, and label agreement is reported explicitly.",
+            "Counts are after-minus-before; turns and boundaries are keyed by entry id plus pinned evidence and sorted by change kind, ordinal and id.",
+            "Both projections reopen against the same index generation and raw bytes; any mismatch rejects the delta rather than silently repairing it."
+        ]),
+    );
+    if let Some(out) = opt(args, "--out") {
+        let content = serde_json::to_vec_pretty(&value)
+            .map_err(|e| err(format!("serialize attempt delta: {e}")))?;
+        fs::write(&out, content).map_err(|e| err(format!("write attempt delta {out}: {e}")))?;
+    }
+    emit(&value, args);
+    Ok(())
+}
+
+// -------------------------------------------------- synthetic stock fixture
+
+fn write_jsonl(path: &Path, lines: &[Value]) -> Result<()> {
+    let mut content = String::new();
+    for line in lines {
+        content.push_str(&serde_json::to_string(line).map_err(|e| err(format!("serialize fixture: {e}")))?);
+        content.push('\n');
+    }
+    fs::write(path, content).map_err(|e| err(format!("write {}: {e}", path.display())))
+}
+
+fn fixture_task_call(call_id: &str, names: &[&str], prompt: &str) -> Value {
+    let tasks: Vec<Value> = names
+        .iter()
+        .map(|n| json!({"name": n, "agent": "gold-task", "task": prompt}))
+        .collect();
+    json!({
+        "type": "message",
+        "id": format!("call-{call_id}"),
+        "parentId": null,
+        "timestamp": "2026-01-01T00:00:01.000Z",
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "toolCall", "id": call_id, "name": "task",
+                         "arguments": {"i": "synthetic dispatch", "tasks": tasks}}]
+        }
+    })
+}
+
+fn fixture_task_result(call_id: &str, text: &str) -> Value {
+    json!({
+        "type": "message",
+        "id": format!("result-{call_id}"),
+        "parentId": null,
+        "timestamp": "2026-01-01T00:00:02.000Z",
+        "message": {"role": "toolResult", "toolCallId": call_id, "toolName": "task",
+                    "content": [{"type": "text", "text": text}]}
+    })
+}
+
+fn fixture_session(id: &str, cwd: &str, parent: Option<&str>) -> Value {
+    let mut v = json!({
+        "type": "session",
+        "version": 3,
+        "id": id,
+        "timestamp": "2026-01-01T00:00:00.000Z",
+        "cwd": cwd
+    });
+    if let Some(p) = parent {
+        v["parentSession"] = json!(p);
+    }
+    v
+}
+
+fn cmd_fixture_adapter(args: &[String]) -> Result<()> {
+    let out = PathBuf::from(
+        opt(args, "--out").ok_or_else(|| err("fixture-adapter needs --out DIR"))?,
+    );
+    let project = out.join("omp").join("synthetic");
+    let side = project.join("2026-01-01T00-00-00-000Z_syn");
+    fs::create_dir_all(&side).map_err(|e| err(format!("create {}: {e}", side.display())))?;
+    let parent = project.join("2026-01-01T00-00-00-000Z_syn.jsonl");
+    let parent_abs = std::path::absolute(&parent)
+        .unwrap_or_else(|_| parent.clone())
+        .to_string_lossy()
+        .into_owned();
+    let other_parent = std::path::absolute(project.join("2026-01-01T00-00-00-000Z_other.jsonl"))
+        .unwrap_or_else(|_| parent.clone())
+        .to_string_lossy()
+        .into_owned();
+
+    let child = |name: &str, parent_ref: &str| -> Vec<Value> {
+        vec![
+            fixture_session("syn-root", "C:\\SYN\\demo", Some(parent_ref)),
+            json!({"type":"message","id":format!("{name}-u"),"parentId":null,
+                   "message":{"role":"user","content":[{"type":"text","text":"SYNTHETIC assignment"}]}}),
+        ]
+    };
+
+    let parent_lines = vec![
+        fixture_session("syn-root", "C:\\SYN\\demo", None),
+        fixture_task_call("call-a", &["S3T1A1"], "Target: ASE-S3-T1 attempt A1"),
+        fixture_task_result("call-a", "Spawned agent `S3T1A1` (job `S3T1A1`)."),
+        fixture_task_call("call-b", &["S3T2A1", "S3T2B1"], "Target: ASE-S3-T2 attempt A1"),
+        fixture_task_result(
+            "call-b",
+            "Spawned 2 background agents using gold-task.\n- `S3T2A1` (job `S3T2A1`)\n- `S3T2B1` (job `S3T2B1`)",
+        ),
+        fixture_task_call("call-c", &["S3T9A1"], "Target: ASE-S3-T9 attempt A1"),
+        fixture_task_result("call-c", "Task S3T9A1 failed preflight: synthetic error"),
+        fixture_task_call("call-d", &["S3T1A1"], "Target: ASE-S3-T1 attempt A2"),
+        fixture_task_result("call-d", "Spawned agent `S3T4A1` (job `S3T4A1`)."),
+        fixture_task_call("call-e", &["S3T5A1"], "Target: ASE-S3-T5 attempt A1"),
+        fixture_task_result("call-e", "Spawned agent `S3T5A1` (job `S3T5A1`)."),
+    ];
+    write_jsonl(&parent, &parent_lines)?;
+
+    write_jsonl(&side.join("S3T1A1.jsonl"), &child("S3T1A1", &parent_abs))?;
+    write_jsonl(&side.join("S3T2A1.jsonl"), &child("S3T2A1", &parent_abs))?;
+    write_jsonl(&side.join("S3T2B1.jsonl"), &child("S3T2B1", &parent_abs))?;
+    write_jsonl(&side.join("S3T4A1.jsonl"), &child("S3T4A1", &parent_abs))?;
+    // Link conflict: the result names this child but its header names another
+    // parent journal. Keep both facts; do not tie-break.
+    write_jsonl(&side.join("S3T5A1.jsonl"), &child("S3T5A1", &other_parent))?;
+    fs::write(
+        side.join("S3T1A1.md"),
+        "Synthetic handoff\n- task_id: ASE-S3-T1\n- attempt_id: A1\n",
+    )
+    .map_err(|e| err(format!("write synthetic handoff: {e}")))?;
+    fs::write(
+        side.join("S3T2A1.md"),
+        "Synthetic handoff\n- task_id: ASE-S3-T2\n- attempt_id: A1\n",
+    )
+    .map_err(|e| err(format!("write synthetic handoff: {e}")))?;
+    println!("wrote synthetic stock adapter fixture to {}", out.display());
+    Ok(())
+}
+// ------------------------------------------------------- P2 runtime analytics
+
+fn analytics_usage() {
+    println!(
+        "ase analytics project [--index FILE] [--omp-root DIR] [--start ISO --end ISO]\n\
+         [--out ROWS.jsonl] [--report REPORT.json] [--limit N] [--json]\n\
+         ase analytics session (--session ID | --file N) [--leaf ENTRY_ID]\n\
+         [--omp-root DIR] [--out ROW.json] [--json]\n\
+         ase analytics reopen ROWS.jsonl [--index FILE] [--json]\n\
+         ase fixture-analytics --out DIR"
+    );
+}
+
+fn cmd_analytics(args: &[String]) -> Result<()> {
+    let Some(sub) = args.first().map(String::as_str) else {
+        analytics_usage();
+        return Err(err("analytics needs project, session or reopen"));
+    };
+    let rest = &args[1..];
+    if matches!(sub, "--help" | "-h") {
+        analytics_usage();
+        return Ok(());
+    }
+    match sub {
+        "project" => cmd_analytics_project(rest),
+        "session" => cmd_analytics_session(rest),
+        "reopen" => cmd_analytics_reopen(rest),
+        other => Err(err(format!("unknown analytics command: {other}"))),
+    }
+}
+
+/// Project provenance is the first path segment of the locked tree layout,
+/// never a model name, session title or adapter candidate. Absence stays an
+/// explicit unknown group in the analytics layer.
+fn analytics_project_of_tree(tree_relpath: &str) -> Option<String> {
+    tree_relpath
+        .split('/')
+        .next()
+        .filter(|segment| !segment.is_empty())
+        .map(str::to_string)
+}
+
+fn cmd_analytics_project(args: &[String]) -> Result<()> {
+    let (idx, store, generation) = load_work(args)?;
+    let window = parse_work_window(args)?;
+    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| DEFAULT_OMP.to_string());
+    let limit = opt(args, "--limit").and_then(|s| s.parse::<usize>().ok());
+    let selected = collect_analytics_files(&idx, &omp_root, limit)?;
+    let projected: Vec<ProjectedWork> = selected
+        .files
+        .par_iter()
+        .map(|file| project_work_file(&idx, &store, file, &generation, window))
+        .collect::<Result<Vec<_>>>()?;
+    let rows: Vec<JournalAnalytics> = projected
+        .iter()
+        .zip(selected.files.iter())
+        .map(|(item, file)| {
+            JournalAnalytics::new(
+                item.projection.clone(),
+                analytics_project_of_tree(&file.layout.tree_relpath),
+            )
+        })
+        .collect();
+    let report = aggregate(&rows);
+    let ok = reconciled(&report);
+
+    if let Some(out) = opt(args, "--out") {
+        let mut content = String::new();
+        for row in &rows {
+            content.push_str(
+                &serde_json::to_string(row)
+                    .map_err(|e| err(format!("serialize analytics row: {e}")))?,
+            );
+            content.push('\n');
+        }
+        fs::write(&out, content).map_err(|e| err(format!("write analytics rows {out}: {e}")))?;
+    }
+    if let Some(out) = opt(args, "--report") {
+        let content = serde_json::to_vec_pretty(&report)
+            .map_err(|e| err(format!("serialize analytics report: {e}")))?;
+        fs::write(&out, content).map_err(|e| err(format!("write analytics report {out}: {e}")))?;
+    }
+
+    let mut value = serde_json::to_value(&report)
+        .map_err(|e| err(format!("render analytics report: {e}")))?;
+    value["command"] = json!("analytics project");
+    value["status"] = json!(if ok { "ok" } else { "reconciliation_failed" });
+    value["limited"] = json!(limit.is_some());
+    value["selection"] = json!({
+        "scanned": selected.root_journals_scanned,
+        "selected": selected.root_journals_selected,
+        "outside_window": selected.root_journals_outside_window,
+        "missing_header": selected.root_journals_missing_header,
+        "root_selection": "all-root-journals; period totals filtered on message.timestamp"
+    });
+    if !has(args, "--json") {
+        value["buckets"] = json!([]);
+    }
+    emit(&value, args);
+    if !ok {
+        std::process::exit(3);
+    }
+    Ok(())
+}
+
+fn cmd_analytics_session(args: &[String]) -> Result<()> {
+    let (idx, store, generation) = load_work(args)?;
+    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| DEFAULT_OMP.to_string());
+    let file_id = if let Some(session) = opt(args, "--session") {
+        let session_idx = idx
+            .session_by_id(&session)
+            .ok_or_else(|| err(format!("session not found in address index: {session}")))?;
+        idx.session(session_idx)?.file()
+    } else if let Some(file) = opt(args, "--file").and_then(|s| s.parse::<u32>().ok()) {
+        file
+    } else {
+        return Err(err("analytics session needs --session ID or --file N"));
+    };
+    let view = idx.file(file_id)?;
+    let rel_opt = ase_work::relpath(view.path(), &omp_root);
+    let rel = rel_opt
+        .clone()
+        .unwrap_or_else(|| ase_work::util::slash_path(view.path()));
+    let bytes = store.bytes(file_id)?;
+    let sha = ase_work::sha256_hex(&bytes);
+    let sid = ase_work::source_id(&rel);
+    let leaf = opt(args, "--leaf");
+    let options = ase_work::ProjectOptions {
+        file_id,
+        path: view.path(),
+        source_id: &sid,
+        generation: &generation,
+        sha256: &sha,
+        event_base: view.event_start(),
+        explicit_leaf: leaf.as_deref(),
+        window: None,
+    };
+    let projection = ase_work::project_bytes(&options, &bytes)?;
+    validate_work_projection(&idx, &projection)?;
+    let project = rel_opt.as_deref().and_then(analytics_project_of_tree);
+    let row = JournalAnalytics::new(projection, project);
+    if let Some(out) = opt(args, "--out") {
+        let content = serde_json::to_vec_pretty(&row)
+            .map_err(|e| err(format!("serialize analytics row: {e}")))?;
+        fs::write(&out, content).map_err(|e| err(format!("write analytics row {out}: {e}")))?;
+    }
+    let report = aggregate(&[row.clone()]);
+    let mut value = serde_json::to_value(&row)
+        .map_err(|e| err(format!("render analytics row: {e}")))?;
+    value["command"] = json!("analytics session");
+    value["reconciliation"] = serde_json::to_value(&report.reconciliation)
+        .map_err(|e| err(format!("render reconciliation: {e}")))?;
+    emit(&value, args);
+    Ok(())
+}
+
+fn cmd_analytics_reopen(args: &[String]) -> Result<()> {
+    let path = positional(args)
+        .or_else(|| opt(args, "--projection"))
+        .ok_or_else(|| err("analytics reopen needs ROWS.jsonl"))?;
+    let rows: Vec<JournalAnalytics> = read_jsonl(&path)?;
+    let (idx, store, generation) = load_work(args)?;
+    let mut checked = 0u64;
+    let mut verified = 0u64;
+    let mut stale = 0u64;
+    let mut evidence_checked = 0u64;
+    let mut evidence_verified = 0u64;
+    let mut runtime_checked = 0u64;
+    let mut runtime_verified = 0u64;
+    let mut failures: Vec<String> = Vec::new();
+    for row in &rows {
+        checked += 1;
+        let projection = &row.projection;
+        let view = idx.file(projection.file_id)?;
+        let path_ok = view.path() == projection.path;
+        let raw = store.bytes(projection.file_id)?;
+        let report = if path_ok {
+            ase_work::reopen_bytes(projection, &raw, &generation)
+        } else {
+            let mut report = ase_work::ReopenReport {
+                status: "stale".to_string(),
+                generation: generation.clone(),
+                file_id: projection.file_id,
+                source_id: projection.source_id.clone(),
+                ..ase_work::ReopenReport::default()
+            };
+            report
+                .errors
+                .push("file_mapping_mismatch:index maps this file id to another path".to_string());
+            report
+        };
+        evidence_checked += report.evidence_checked as u64;
+        evidence_verified += report.evidence_verified as u64;
+        runtime_checked += report.runtime_checked as u64;
+        runtime_verified += report.runtime_verified as u64;
+        if report.status == "verified" {
+            verified += 1;
+        } else {
+            stale += 1;
+            failures.push(format!(
+                "{}:{}:{}",
+                row.source_id,
+                report.status,
+                report.errors.join(";")
+            ));
+        }
+    }
+    let value = json!({
+        "command": "analytics reopen",
+        "status": if stale == 0 { "verified" } else { "stale" },
+        "generation": generation,
+        "files_checked": checked,
+        "files_verified": verified,
+        "files_stale": stale,
+        "evidence_checked": evidence_checked,
+        "evidence_verified": evidence_verified,
+        "runtime_checked": runtime_checked,
+        "runtime_verified": runtime_verified,
+        "failures_shown": failures.len().min(20),
+        "failures": &failures[..failures.len().min(20)]
+    });
+    emit(&value, args);
+    if stale > 0 {
+        std::process::exit(3);
+    }
+    Ok(())
+}
+
+// Synthetic producer-shaped OMP journals for a deterministic P2 check. No
+// corpus path, prose or private identifier is written; each file isolates one
+// rule: parallel clocks, two projects sharing a model, active-leaf choice,
+// half-open period and missing producer fields.
+fn fixture_analytics_session(id: &str, ts: &str) -> String {
+    format!(
+        "{}\n",
+        json!({
+            "type": "session", "version": 3, "id": id, "timestamp": ts,
+            "cwd": "C:\\SYNTHETIC\\s5t2", "title": "synthetic runtime-analytics fixture"
+        })
+    )
+}
+
+fn fixture_analytics_user(id: &str, parent: Option<&str>, ts: &str) -> String {
+    let mut record = json!({
+        "type": "message", "id": id, "timestamp": ts,
+        "message": {"role": "user", "content": [{"type": "text", "text": "synthetic"}]}
+    });
+    if let Some(parent) = parent {
+        record["parentId"] = json!(parent);
+    }
+    format!("{record}\n")
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fixture_analytics_turn(
+    id: &str,
+    parent: &str,
+    ts: &str,
+    model: Option<&str>,
+    msg_ts: Option<i64>,
+    completed: Option<i64>,
+    duration: Option<f64>,
+    ttft: Option<f64>,
+    cost: Option<f64>,
+    usage: bool,
+) -> String {
+    let mut message = json!({
+        "role": "assistant",
+        "content": [{"type": "text", "text": "synthetic"}],
+        "stopReason": "stop"
+    });
+    if let Some(model) = model {
+        message["model"] = json!(model);
+    }
+    if let Some(ts) = msg_ts {
+        message["timestamp"] = json!(ts);
+    }
+    if let Some(ts) = completed {
+        message["completedAt"] = json!(ts);
+    }
+    if let Some(value) = duration {
+        message["duration"] = json!(value);
+    }
+    if let Some(value) = ttft {
+        message["ttft"] = json!(value);
+    }
+    if usage {
+        let mut cost_obj = json!({"input": 1, "output": 1, "cacheRead": 0, "cacheWrite": 0});
+        if let Some(value) = cost {
+            cost_obj["total"] = json!(value);
+        }
+        message["usage"] = json!({
+            "input": 1, "output": 1, "cacheRead": 0, "cacheWrite": 0,
+            "totalTokens": 2, "cost": cost_obj
+        });
+    }
+    format!(
+        "{}\n",
+        json!({
+            "type": "message", "id": id, "parentId": parent, "timestamp": ts,
+            "message": message
+        })
+    )
+}
+
+fn cmd_fixture_analytics(args: &[String]) -> Result<()> {
+    let out = PathBuf::from(
+        opt(args, "--out").ok_or_else(|| err("fixture-analytics needs --out DIR"))?,
+    );
+    let omp = out.join("omp");
+    let codex = out.join("codex");
+    fs::create_dir_all(&codex).map_err(|e| err(format!("create {}: {e}", codex.display())))?;
+    let write = |rel: &str, content: String| -> Result<()> {
+        let path = omp.join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| err(format!("create {}: {e}", parent.display())))?;
+        }
+        fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))
+    };
+
+    let mut parallel = fixture_analytics_session("s5t2-parallel", "2026-10-05T00:00:00.000Z");
+    parallel.push_str(&fixture_analytics_user("u1", None, "2026-10-05T00:00:01.000Z"));
+    parallel.push_str(&fixture_analytics_turn("a1", "u1", "2026-10-05T00:00:02.000Z",
+        Some("fixture-parallel"), Some(1_791_158_402_000), Some(1_791_158_404_000),
+        Some(2000.0), Some(500.0), Some(0.01), true));
+    parallel.push_str(&fixture_analytics_turn("a2", "a1", "2026-10-05T00:00:03.000Z",
+        Some("fixture-parallel"), Some(1_791_158_402_500), Some(1_791_158_404_500),
+        Some(2000.0), Some(700.0), Some(0.02), true));
+    write("p-parallel/parallel.jsonl", parallel)?;
+
+    let mut second = fixture_analytics_session("s5t2-second", "2026-10-05T01:00:00.000Z");
+    second.push_str(&fixture_analytics_user("u1", None, "2026-10-05T01:00:01.000Z"));
+    second.push_str(&fixture_analytics_turn("b1", "u1", "2026-10-05T01:00:02.000Z",
+        Some("fixture-parallel"), Some(1_791_162_002_000), Some(1_791_162_003_000),
+        Some(1000.0), Some(200.0), Some(0.03), true));
+    write("q-parallel/second.jsonl", second)?;
+
+    let mut branch = fixture_analytics_session("s5t2-branch", "2026-10-02T00:00:00.000Z");
+    branch.push_str(&fixture_analytics_user("u1", None, "2026-10-02T00:00:01.000Z"));
+    branch.push_str(&fixture_analytics_turn("a1", "u1", "2026-10-02T00:00:02.000Z",
+        Some("fixture-branch"), Some(1_790_899_202_000), Some(1_790_899_203_000),
+        Some(1000.0), Some(100.0), Some(0.01), true));
+    branch.push_str(&fixture_analytics_turn("a2a", "a1", "2026-10-02T00:00:03.000Z",
+        Some("fixture-branch"), Some(1_790_899_203_000), Some(1_790_899_204_000),
+        Some(1000.0), Some(100.0), Some(0.10), true));
+    branch.push_str(&fixture_analytics_turn("a2b", "a1", "2026-10-02T00:00:04.000Z",
+        Some("fixture-branch"), Some(1_790_899_204_000), Some(1_790_899_205_000),
+        Some(1000.0), Some(100.0), Some(0.20), true));
+    write("p-branch/branch.jsonl", branch)?;
+
+    let mut window = fixture_analytics_session("s5t2-window", "2026-10-01T00:00:00.000Z");
+    window.push_str(&fixture_analytics_user("u1", None, "2026-10-01T00:00:01.000Z"));
+    window.push_str(&fixture_analytics_turn("before", "u1", "2026-09-30T23:59:59.000Z",
+        Some("fixture-window"), Some(1_790_812_799_000), Some(1_790_812_799_500),
+        Some(500.0), Some(50.0), Some(0.01), true));
+    window.push_str(&fixture_analytics_turn("inside", "before", "2026-10-01T00:00:00.000Z",
+        Some("fixture-window"), Some(1_790_812_800_000), Some(1_790_812_800_500),
+        Some(500.0), Some(50.0), Some(0.02), true));
+    window.push_str(&fixture_analytics_turn("at-end", "inside", "2026-11-01T00:00:00.000Z",
+        Some("fixture-window"), Some(1_793_491_200_000), Some(1_793_491_200_500),
+        Some(500.0), Some(50.0), Some(0.04), true));
+    write("p-window/window.jsonl", window)?;
+
+    let mut gaps = fixture_analytics_session("s5t2-gaps", "2026-10-03T00:00:00.000Z");
+    gaps.push_str(&fixture_analytics_user("u1", None, "2026-10-03T00:00:01.000Z"));
+    gaps.push_str(&format!("{}\n", json!({
+        "type": "message", "id": "n1", "parentId": "u1",
+        "timestamp": "2026-10-03T00:00:02.000Z",
+        "message": {"role": "assistant", "content": [{"type": "text", "text": "synthetic"}]}
+    })));
+    gaps.push_str(&fixture_analytics_turn("c1", "n1", "2026-10-03T00:00:03.000Z",
+        Some("fixture-gaps"), Some(1_790_983_203_000), None, None, None, None, true));
+    gaps.push_str(&fixture_analytics_turn("c2", "c1", "2026-10-03T00:00:04.000Z",
+        None, Some(1_790_983_204_000), Some(1_790_983_205_000),
+        Some(1000.0), Some(300.0), Some(0.05), true));
+    write("p-gaps/gaps.jsonl", gaps)?;
+
+    println!("wrote 5 synthetic P2 runtime-analytics OMP fixtures to {}", out.display());
     Ok(())
 }
