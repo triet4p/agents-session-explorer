@@ -20,10 +20,13 @@
 pub mod assertion;
 pub mod baseline;
 pub mod evaluate;
+mod pin;
 pub mod rubric;
 pub mod runner;
 pub mod source;
+mod stage;
 pub mod store;
+mod views;
 
 #[cfg(test)]
 mod tests;
