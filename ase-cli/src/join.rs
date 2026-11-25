@@ -1,23 +1,23 @@
-//! P4 skill/template catalog join per `artifacts/sprint-7/ASE-S7-T1/contract-a1.md` §5 and §6.
+//! Skill/template catalog join over verified assertions.
 //!
-//! This module reads a local `ase-p4-assertions-v1` layer written by `ase import
-//! verdicts`, reopens the cited bundle evidence through the private local map,
-//! and compares only today's verified assertions against a user-supplied
+//! This module reads a local assertion layer written by `ase import verdicts`,
+//! reopens the cited bundle evidence through the private local map, and
+//! compares only today's verified assertions against a user-supplied
 //! `ase-skill-catalog-v1` file. Comparison is exact byte equality on
 //! `(kind, key/alias)`; there is no inference, recommendation, model call, gate
 //! measurement or write to any store. No private source path enters the output.
 
+use crate::verify::{self, BUNDLE_VERSION};
 use ase_core::{err, Result};
 use ase_index::sha256_hex;
-use crate::p4_verify::{self, BUNDLE_VERSION};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 const CATALOG_SCHEMA: &str = "ase-skill-catalog-v1";
-const JOIN_SCHEMA: &str = "ase-p4-join-v1";
-const ASSERTIONS_SCHEMA: &str = "ase-p4-assertions-v1";
+const JOIN_SCHEMA: &str = "ase-join-v1";
+const ASSERTIONS_SCHEMA: &str = "ase-assertions-v1";
 const NO_MATCH_MEANING: &str = "no entry in the supplied catalog matched the declared key; this is not evidence that no skill exists or that one should be created";
 
 struct Catalog {
@@ -92,7 +92,7 @@ pub fn run(args: &[String]) -> Result<()> {
     let assertions = load_store(&store_path)?;
     let catalog = load_catalog(&catalog_path)?;
     let view = load_bundle_view(&bundle_dir)?;
-    let verify = p4_verify::verify(&bundle_dir, Some(&map_path), None);
+    let verify = verify::verify(&bundle_dir, Some(&map_path), None);
     let evidence_state = evidence_reopen(&verify, &view);
     let verdict_rows = match verdicts.as_deref() {
         Some(path) => Some(load_verdict_rows(Path::new(path))?),
@@ -160,7 +160,7 @@ pub fn run(args: &[String]) -> Result<()> {
     let report = json!({
         "command": "join",
         "action": "skill-gap",
-        "scope": "P4 deterministic catalog join of verified assertions; no model, gate measurement or source path",
+        "scope": "deterministic catalog join of verified assertions; no model, gate measurement or source path",
         "schema": JOIN_SCHEMA,
         "status": status,
         "catalog_id": catalog.id,
@@ -187,7 +187,7 @@ fn emit(report: &Value, as_json: bool) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(report).map_err(|e| err(format!("report: {e}")))?);
     } else {
         println!(
-            "p4 join skill-gap: {}; rows {} (match {}, no_match {}, ambiguous {}, insufficient_input {}), excluded {}; catalog {}, bundle {}",
+            "join skill-gap: {}; rows {} (match {}, no_match {}, ambiguous {}, insufficient_input {}), excluded {}; catalog {}, bundle {}",
             report["status"].as_str().unwrap_or("failed_closed"),
             report["rows_total"].as_u64().unwrap_or(0),
             report["status_counts"]["match"].as_u64().unwrap_or(0),
@@ -317,7 +317,7 @@ fn load_store(path: &Path) -> Result<BTreeMap<String, Value>> {
     let mut body = value.clone();
     let recorded = body.get("store_digest").and_then(Value::as_str).unwrap_or("").to_string();
     body.as_object_mut().expect("store object").remove("store_digest");
-    if recorded != format!("sha256:{}", p4_verify::value_digest(&body)) {
+    if recorded != format!("sha256:{}", verify::value_digest(&body)) {
         return Err(err("assertion store digest mismatch"));
     }
     let mut assertions = BTreeMap::new();
@@ -471,7 +471,7 @@ fn lineage_failure(
             return reject("evidence_unverified", "cited evidence did not reopen today");
         }
     }
-    let expected = format!("as-{}", &p4_verify::value_digest(&p4_verify::assertion_body(&view.bundle, assertion))[..16]);
+    let expected = format!("as-{}", &verify::value_digest(&verify::assertion_body(&view.bundle, assertion))[..16]);
     if id != expected {
         return reject("assertion_id_conflict", "assertion id differs from the stored body");
     }
@@ -497,7 +497,7 @@ fn lineage_failure(
         let Some(verdict) = rows.get(id) else {
             return reject("verdict_missing", "assertion is absent from the supplied verdict file");
         };
-        let digest = format!("sha256:{}", p4_verify::value_digest(verdict));
+        let digest = format!("sha256:{}", verify::value_digest(verdict));
         if assertion.get("verdict_digest").and_then(Value::as_str) != Some(digest.as_str()) {
             return reject("verdict_digest_mismatch", "verdict digest differs from the supplied verdict file");
         }
@@ -530,8 +530,8 @@ fn same_spans(stored: &[Value], current: &[Value]) -> bool {
             "block_sha256": row.get("block_sha256").cloned().unwrap_or(Value::Null),
         })
     };
-    let stored: BTreeSet<String> = stored.iter().map(|row| p4_verify::value_digest(&key(row))).collect();
-    let current: BTreeSet<String> = current.iter().map(|row| p4_verify::value_digest(&key(row))).collect();
+    let stored: BTreeSet<String> = stored.iter().map(|row| verify::value_digest(&key(row))).collect();
+    let current: BTreeSet<String> = current.iter().map(|row| verify::value_digest(&key(row))).collect();
     stored == current
 }
 
@@ -611,7 +611,7 @@ fn join_row(assertion: &Value, catalog: &Catalog) -> JoinRow {
         "status": status,
         "sorted_entry_ids": entry_ids,
     });
-    let join_id = format!("j-{}", &p4_verify::value_digest(&join_body)[..16]);
+    let join_id = format!("j-{}", &verify::value_digest(&join_body)[..16]);
     let mut evidence_refs: Vec<Value> = assertion
         .get("evidence_refs")
         .and_then(Value::as_array)

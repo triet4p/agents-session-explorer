@@ -1,14 +1,13 @@
-//! P4 bundle export per `artifacts/sprint-7/ASE-S7-T1/contract-a1.md` §3 and
-//! `docs/sprint-plans/sprint-7.md:17`.
+//! Evidence-bundle export.
 //!
 //! The exporter runs the pinned motif query locally, selects representatives
-//! deterministically, redacts result text with `ase-p4-redact-v1`, writes only
-//! path-free shareable files, and keeps the alias-to-source map outside the
-//! bundle. Nothing is published until the freshly written staging bundle has
-//! been reopened and verified by `p4_verify::verify`. No model, network,
-//! verdict, catalog or gate measurement is involved.
+//! deterministically, redacts result text with the pinned redaction policy,
+//! writes only path-free shareable files, and keeps the alias-to-source map
+//! outside the bundle. Nothing is published until the freshly written staging
+//! bundle has been reopened and verified by `verify::verify`. No model,
+//! network, verdict, catalog or gate measurement is involved.
 
-use crate::p4_verify::{
+use crate::verify::{
     cap_signature, canonical, derive_signature, derive_tool, occurrence_identity_hex,
     redaction_lines, render_excerpt, render_evidence_view, render_questions_view,
     result_for_call, result_status_of, row_index_of, row_spans, selector_of, value_digest, verify,
@@ -985,7 +984,7 @@ fn build_local_map(
         }));
     }
     Ok(json!({
-        "schema": "ase-p4-local-sources-v1",
+        "schema": "ase-local-sources-v1",
         "snapshot": {
             "core_digest": core,
             "files": file_rows,
@@ -1065,7 +1064,7 @@ pub fn run(args: &[String]) -> Result<()> {
         return Err(err("motif has no eligible non-duplicate occurrences"));
     }
 
-    let stage = absolute(Path::new(".tmp/ase-s7-t3/export-stage"));
+    let stage = absolute(Path::new(".tmp/ase-export-stage"));
     if stage.exists() {
         fs::remove_dir_all(&stage).map_err(|e| err(format!("clear staging directory: {e}")))?;
     }
@@ -1171,7 +1170,7 @@ pub fn run(args: &[String]) -> Result<()> {
     let summary = json!({
         "command": "export",
         "status": "exported",
-        "scope": "P4 bundle export and prepublication reopen; no gate measurement",
+        "scope": "bundle export and prepublication reopen; no gate measurement",
         "motif_id": motif_id,
         "snapshot_id": assembled.bundle["snapshot"]["snapshot_id"],
         "core_digest": assembled.bundle["snapshot"]["core_digest"],
@@ -1196,7 +1195,7 @@ pub fn run(args: &[String]) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&summary).unwrap());
     } else {
         println!(
-            "p4 export: {}; bundle {}; representatives {}/{}; evidence {}/{}; verification {}",
+            "bundle export: {}; bundle {}; representatives {}/{}; evidence {}/{}; verification {}",
             motif_id,
             assembled.bundle["bundle_id"].as_str().unwrap_or(""),
             selected.len(),

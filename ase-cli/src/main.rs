@@ -1,23 +1,15 @@
-//! P0a address CLI plus the P0b derived search layer. All decoding,
-//! addressing and projection derivation lives in library crates; the CLI only
-//! renders metadata. No model is on any query path. P0c-2 adds a metadata-only
-//! file-name grammar audit (`audit naming`) and its synthetic fixture writer;
-//! P0c-3 adds a metadata-only `parentSession` delegation audit
-//! (`audit delegation`) and its synthetic fixture writer.
-//! P0c-4 adds a metadata-only `task_id` marker observation audit
-//! (`audit markers`) and its synthetic fixture writer.
-//! P0c-5 reconciles naming, delegation and marker signals in `resolve task:`
-//! with evidence-backed `assigned`, `ambiguous` or `unresolved` output; it also
-//! adds `fixture-resolve` synthetic fixtures.
-//! P0c-9 joins native OMP `task_dispatch_v1` / `task_dispatch_child_v1`
-//! records into `resolve task:` evidence and adds `fixture-dispatch`.
-//! The record loader itself lives in `ase-motif::membership` so the motif
-//! projection reuses exactly the same validated membership.
-//! P0d-2 adds `motif` (bounded alignment, task-deduplicated support, recorded
-//! denominator/exclusions, fixed-seed null model and per-occurrence evidence)
-//! and `fixture-motif` synthetic fixtures.
-//! P4 bundle verification reopens evidence against a private local source map;
-//! `verify --all` remains the unchanged P0a span check.
+//! Command-line surface for the address index, derived search layer, task
+//! resolution, work projection, motif, judge and evidence-bundle layers.
+//!
+//! All decoding, addressing and projection derivation lives in library crates;
+//! the CLI only renders metadata and composes those layers. No model runs on a
+//! query path. Metadata-only audits cover file-name grammar, `parentSession`
+//! delegation and `task_id` markers; `resolve task:` reconciles those signals
+//! with native OMP `task_dispatch_v1` / `task_dispatch_child_v1` records. The
+//! record loader itself lives in `ase-motif::membership` so the motif
+//! projection reuses exactly the same validated membership. Bundle verification
+//! reopens evidence against a private local source map; `verify --all` remains
+//! the address span check.
 
 use ase_core::{err, EventIdx, ProjectionKind, RawStore, Result, Role, SpanRef, NONE};
 use ase_work::{
@@ -50,14 +42,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::fs;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
-mod p4_verify;
-mod p4_export;
-mod p4_import;
-mod p4_join;
+mod verify;
+mod export;
+mod import;
+mod join;
+mod config;
 
 const DEFAULT_INDEX: &str = "ase.index";
-const DEFAULT_OMP: &str = "C:/Users/admin/.omp/agent/sessions";
-const DEFAULT_CODEX: &str = "C:/Users/admin/.codex/sessions";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -73,7 +64,7 @@ fn main() {
         "verify" => cmd_verify(rest),
         "bench-show" => cmd_bench_show(rest),
         "fixture" => cmd_fixture(rest),
-        "fixture-p0b" => cmd_fixture_p0b(rest),
+        "fixture-address" => cmd_fixture_address(rest),
         "search" => cmd_search(rest),
         "open" => cmd_open(rest),
         "shingle" => cmd_shingle(rest),
@@ -86,9 +77,9 @@ fn main() {
         "fixture-dispatch" => cmd_fixture_dispatch(rest),
         "fixture-delta" => cmd_fixture_delta(rest),
         "motif" => cmd_motif(rest),
-        "export" => p4_export::run(rest),
-        "import" => p4_import::run(rest),
-        "join" => p4_join::run(rest),
+        "export" => export::run(rest),
+        "import" => import::run(rest),
+        "join" => join::run(rest),
         "adapter" => cmd_adapter(rest),
         "work" => cmd_work(rest),
         "analytics" => cmd_analytics(rest),
@@ -107,7 +98,7 @@ fn main() {
 
 fn usage() {
     println!(
-        "ase (P0a address / P0b derived search)\n\n\
+        "ase (address index / derived search)\n\n\
          ase index   [--layer address|postings|all] [--omp-root DIR] [--codex-root DIR]\n\
                      [--index FILE] [--fail-before-publish] [--json]\n\
          ase show    <span:F:L:LEN|session:ID> [--role ROLE] [--ordinal A:B] [--explain] [--content] [--json]\n\
@@ -201,7 +192,7 @@ fn usage() {
          ase llm key set [--profile NAME] [--json]   (hidden prompt; never argv)\n\
          ase llm key clear [--profile NAME] [--json]\n\
          ase llm status [--profile NAME] [--json]\n\
-         ase fixture-p0b --out DIR"
+         ase fixture-address --out DIR"
     );
 }
 
@@ -360,8 +351,8 @@ fn cmd_index(args: &[String]) -> Result<()> {
         return Ok(());
     }
     let out = index_path(args);
-    let omp = PathBuf::from(opt(args, "--omp-root").unwrap_or_else(|| DEFAULT_OMP.to_string()));
-    let codex = PathBuf::from(opt(args, "--codex-root").unwrap_or_else(|| DEFAULT_CODEX.to_string()));
+    let omp = PathBuf::from(opt(args, "--omp-root").unwrap_or_else(|| config::omp_root()));
+    let codex = PathBuf::from(opt(args, "--codex-root").unwrap_or_else(|| config::codex_root()));
     let layer = opt(args, "--layer").unwrap_or_else(|| "address".to_string());
     if !matches!(layer.as_str(), "address" | "postings" | "all") {
         return Err(err("--layer must be address, postings or all"));
@@ -970,9 +961,9 @@ fn cmd_resolve(args: &[String]) -> Result<()> {
         "guarantees": [
             "All relations are verbatim source metadata captured at index time; no inferred or model-generated edges.",
             "session: and span: resolution is exhaustive over the indexed snapshot and reports unresolved references explicitly.",
-            "task: resolution is candidate-only by design in P0a: a literal path token hit is NOT task identity and NOT an assignment. P0c owns grammar, prose task_id, continuation and semantic boundaries; none are performed here.",
+            "task: resolution is candidate-only at this layer: a literal path token hit is NOT task identity and NOT an assignment. Naming grammar, prose task_id, continuation and dispatch reconciliation are reported separately; none are guessed here.",
             "Every relation carries at least one raw byte span; stale files are reported, not silently served.",
-            "No postings, motif, turn or judge data exists in P0a."
+            "No postings, motif, turn or judge data is used by this relation view."
         ]
     });
     if has(args, "--json") {
@@ -1001,7 +992,7 @@ fn cmd_resolve(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-// ------------------------------------------- P0c-5 task identity resolution
+// ------------------------------------------------ task identity resolution
 
 fn resolve_naming_signals(idx: &Index) -> Result<Vec<NamingSignal>> {
     let audit = ase_naming::audit(&naming_sources(idx)?);
@@ -1514,7 +1505,7 @@ fn cmd_resolve_task(
 
 fn cmd_verify(args: &[String]) -> Result<()> {
     if let Some(bundle) = positional(args) {
-        return p4_verify::run_bundle(&bundle, args);
+        return verify::run_bundle(&bundle, args);
     }
     let all = has(args, "--all");
     let sample: Option<u64> = opt(args, "--sample").and_then(|s| s.parse().ok());
@@ -2020,68 +2011,68 @@ fn cmd_fixture(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-const P0B_OMP: &str = r#"{"type":"session","version":3,"id":"p0b-session-omp","timestamp":"2026-02-03T04:05:06.000Z","cwd":"C:\\SYNTHETIC\\p0b","title":"synthetic"}
-{"type":"message","id":"p0b-e1","parentId":null,"timestamp":"2026-02-03T04:05:07.000Z","message":{"role":"user","content":[{"type":"text","text":"P0B PROSE ALPHA \u00e9\u2603"},{"type":"text","text":"P0B PROSE BETA"}]}}
-{"type":"message","id":"p0b-e2","parentId":"p0b-e1","timestamp":"2026-02-03T04:05:08.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"P0B EXCLUDED THINKING"},{"type":"text","text":"P0B ASSISTANT GAMMA"},{"type":"toolCall","id":"p0b-call-a","name":"alphaTool","args":{"path":"synthetic/a.txt","flag":true}},{"type":"toolCall","id":"p0b-call-b","name":"betaTool","args":{"path":"synthetic/b.txt","count":2}},{"type":"toolCall","id":"p0b-call-c","name":"gammaTool","args":{}}]}}
-{"type":"message","id":"p0b-e3","parentId":"p0b-e1","timestamp":"2026-02-03T04:05:09.000Z","message":{"role":"toolResult","toolCallId":"p0b-call-a","content":[{"type":"text","text":"P0B EXCLUDED TOOL OUTPUT"}]}}
-{"type":"message","id":"p0b-e5","parentId":"p0b-e2","timestamp":"2026-02-03T04:05:10.000Z","message":{"role":"assistant","content":[{"type":"text","text":"P0B LINEAR DELTA"},{"type":"toolCall","id":"p0b-call-e","name":"epsilonTool","args":{}}]}}
-{"type":"message","id":"p0b-e6","parentId":"p0b-e5","timestamp":"2026-02-03T04:05:11.000Z","message":{"role":"assistant","content":[{"type":"text","text":"P0B LINEAR ETA"},{"type":"toolCall","id":"p0b-call-f","name":"zetaTool","args":{}}]}}
-{"type":"message","id":"p0b-fork-a","parentId":"p0b-e2","timestamp":"2026-02-03T04:05:12.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"p0b-call-ga","name":"forkATool","args":{}}]}}
-{"type":"message","id":"p0b-fork-b","parentId":"p0b-e2","timestamp":"2026-02-03T04:05:13.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"p0b-call-gb","name":"forkBTool","args":{}}]}}
+const ADDRESS_OMP: &str = r#"{"type":"session","version":3,"id":"addr-session-omp","timestamp":"2026-02-03T04:05:06.000Z","cwd":"C:\\SYNTHETIC\\addr","title":"synthetic"}
+{"type":"message","id":"addr-e1","parentId":null,"timestamp":"2026-02-03T04:05:07.000Z","message":{"role":"user","content":[{"type":"text","text":"ADDRESS PROSE ALPHA \u00e9\u2603"},{"type":"text","text":"ADDRESS PROSE BETA"}]}}
+{"type":"message","id":"addr-e2","parentId":"addr-e1","timestamp":"2026-02-03T04:05:08.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"ADDRESS EXCLUDED THINKING"},{"type":"text","text":"ADDRESS ASSISTANT GAMMA"},{"type":"toolCall","id":"addr-call-a","name":"alphaTool","args":{"path":"synthetic/a.txt","flag":true}},{"type":"toolCall","id":"addr-call-b","name":"betaTool","args":{"path":"synthetic/b.txt","count":2}},{"type":"toolCall","id":"addr-call-c","name":"gammaTool","args":{}}]}}
+{"type":"message","id":"addr-e3","parentId":"addr-e1","timestamp":"2026-02-03T04:05:09.000Z","message":{"role":"toolResult","toolCallId":"addr-call-a","content":[{"type":"text","text":"ADDRESS EXCLUDED TOOL OUTPUT"}]}}
+{"type":"message","id":"addr-e5","parentId":"addr-e2","timestamp":"2026-02-03T04:05:10.000Z","message":{"role":"assistant","content":[{"type":"text","text":"ADDRESS LINEAR DELTA"},{"type":"toolCall","id":"addr-call-e","name":"epsilonTool","args":{}}]}}
+{"type":"message","id":"addr-e6","parentId":"addr-e5","timestamp":"2026-02-03T04:05:11.000Z","message":{"role":"assistant","content":[{"type":"text","text":"ADDRESS LINEAR ETA"},{"type":"toolCall","id":"addr-call-f","name":"zetaTool","args":{}}]}}
+{"type":"message","id":"addr-fork-a","parentId":"addr-e2","timestamp":"2026-02-03T04:05:12.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"addr-call-ga","name":"forkATool","args":{}}]}}
+{"type":"message","id":"addr-fork-b","parentId":"addr-e2","timestamp":"2026-02-03T04:05:13.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"addr-call-gb","name":"forkBTool","args":{}}]}}
 {this line is deliberately not json}
 "#;
 
-const P0B_CODEX: &str = r#"{"timestamp":"2026-02-03T04:05:06.000Z","ordinal":0,"type":"session_meta","payload":{"id":"p0b-session-codex","cwd":"C:\\SYNTHETIC\\p0b"}}
-{"timestamp":"2026-02-03T04:05:07.000Z","ordinal":1,"type":"event_msg","payload":{"type":"user_message","message":"P0B CODEX EPSILON \u00e9"}}
-{"timestamp":"2026-02-03T04:05:08.000Z","ordinal":2,"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"P0B CODEX ZETA"},{"type":"output_text","text":"P0B CODEX ETA"}]}}
-{"timestamp":"2026-02-03T04:05:09.000Z","ordinal":3,"type":"response_item","payload":{"type":"function_call","call_id":"p0b-call-x","name":"alphaTool","arguments":"{\"path\":\"synthetic/x.txt\",\"flag\":true}"}}
-{"timestamp":"2026-02-03T04:05:10.000Z","ordinal":4,"type":"response_item","payload":{"type":"function_call_output","call_id":"p0b-call-x","output":"P0B EXCLUDED TOOL OUTPUT"}}
-{"timestamp":"2026-02-03T04:05:11.000Z","ordinal":5,"type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"P0B EXCLUDED THINKING"}]}}
+const ADDRESS_CODEX: &str = r#"{"timestamp":"2026-02-03T04:05:06.000Z","ordinal":0,"type":"session_meta","payload":{"id":"addr-session-codex","cwd":"C:\\SYNTHETIC\\addr"}}
+{"timestamp":"2026-02-03T04:05:07.000Z","ordinal":1,"type":"event_msg","payload":{"type":"user_message","message":"ADDRESS CODEX EPSILON \u00e9"}}
+{"timestamp":"2026-02-03T04:05:08.000Z","ordinal":2,"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ADDRESS CODEX ZETA"},{"type":"output_text","text":"ADDRESS CODEX ETA"}]}}
+{"timestamp":"2026-02-03T04:05:09.000Z","ordinal":3,"type":"response_item","payload":{"type":"function_call","call_id":"addr-call-x","name":"alphaTool","arguments":"{\"path\":\"synthetic/x.txt\",\"flag\":true}"}}
+{"timestamp":"2026-02-03T04:05:10.000Z","ordinal":4,"type":"response_item","payload":{"type":"function_call_output","call_id":"addr-call-x","output":"ADDRESS EXCLUDED TOOL OUTPUT"}}
+{"timestamp":"2026-02-03T04:05:11.000Z","ordinal":5,"type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"ADDRESS EXCLUDED THINKING"}]}}
 "#;
 
-const P0B_CODEX_SECOND: &str = r#"{"timestamp":"2026-02-03T05:05:06.000Z","ordinal":0,"type":"session_meta","payload":{"id":"p0b-session-codex-2","cwd":"C:\\SYNTHETIC\\p0b"}}
-{"timestamp":"2026-02-03T05:05:07.000Z","ordinal":1,"type":"response_item","payload":{"type":"function_call","call_id":"p0b-call-x","name":"alphaTool","arguments":"{\"path\":\"synthetic/y.txt\",\"flag\":true}"}}
-{"timestamp":"2026-02-03T05:05:08.000Z","ordinal":2,"type":"event_msg","payload":{"type":"user_message","message":"P0B OTHER SESSION THETA"}}
+const ADDRESS_CODEX_SECOND: &str = r#"{"timestamp":"2026-02-03T05:05:06.000Z","ordinal":0,"type":"session_meta","payload":{"id":"addr-session-codex-2","cwd":"C:\\SYNTHETIC\\addr"}}
+{"timestamp":"2026-02-03T05:05:07.000Z","ordinal":1,"type":"response_item","payload":{"type":"function_call","call_id":"addr-call-x","name":"alphaTool","arguments":"{\"path\":\"synthetic/y.txt\",\"flag\":true}"}}
+{"timestamp":"2026-02-03T05:05:08.000Z","ordinal":2,"type":"event_msg","payload":{"type":"user_message","message":"ADDRESS OTHER SESSION THETA"}}
 "#;
 
-fn cmd_fixture_p0b(args: &[String]) -> Result<()> {
-    let out = PathBuf::from(opt(args, "--out").ok_or_else(|| err("fixture-p0b needs --out DIR"))?);
+fn cmd_fixture_address(args: &[String]) -> Result<()> {
+    let out = PathBuf::from(opt(args, "--out").ok_or_else(|| err("fixture-address needs --out DIR"))?);
     let omp = out.join("omp");
     let codex = out.join("codex");
     std::fs::create_dir_all(&omp).map_err(|e| err(format!("create {}: {e}", omp.display())))?;
     std::fs::create_dir_all(&codex).map_err(|e| err(format!("create {}: {e}", codex.display())))?;
-    std::fs::write(omp.join("synthetic-p0b.jsonl"), P0B_OMP)
+    std::fs::write(omp.join("synthetic-addr.jsonl"), ADDRESS_OMP)
         .map_err(|e| err(format!("write fixture: {e}")))?;
-    let codex_bytes = P0B_CODEX.as_bytes();
-    std::fs::write(codex.join("synthetic-p0b.jsonl"), codex_bytes)
+    let codex_bytes = ADDRESS_CODEX.as_bytes();
+    std::fs::write(codex.join("synthetic-addr.jsonl"), codex_bytes)
         .map_err(|e| err(format!("write fixture: {e}")))?;
     let compressed = zstd::stream::encode_all(std::io::Cursor::new(codex_bytes), 3)
         .map_err(|e| err(format!("zstd fixture: {e}")))?;
-    std::fs::write(codex.join("synthetic-p0b.jsonl.zst"), compressed)
+    std::fs::write(codex.join("synthetic-addr.jsonl.zst"), compressed)
         .map_err(|e| err(format!("write fixture: {e}")))?;
-    std::fs::write(codex.join("synthetic-p0b-second.jsonl"), P0B_CODEX_SECOND)
+    std::fs::write(codex.join("synthetic-addr-second.jsonl"), ADDRESS_CODEX_SECOND)
         .map_err(|e| err(format!("write fixture: {e}")))?;
-    println!("wrote synthetic P0b fixtures to {}", out.display());
+    println!("wrote synthetic address fixtures to {}", out.display());
     Ok(())
 }
 
-// ------------------------------------------------------- P0c-2 naming audit
+// ------------------------------------------------------------ naming audit
 
 // Only synthetic names are used for rule work. Each tuple is
 // (parent directory, file basenames); project comes from the name itself.
 const NAMING_FIXTURE: &[(&str, &[&str])] = &[
-    ("multiple-splits", &["S18Task70BS01", "S18Task70SR02", "S18Task70DEP3"]),
-    ("marker-t", &["S14T3ProviderA5", "S14T3ReviewB7"]),
-    ("shared-prefix-tie", &["S813BoundaryGold23", "S813BoundarySilver24"]),
-    ("missing-suffix", &["S14T3ProviderA", "S14T3OtherB9"]),
-    ("collision-a", &["S18Task70BS01"]),
-    ("collision-b", &["S18Task70BS01"]),
-    ("cross-project", &["S18Task70BS01", "S19Task70BS01"]),
+    ("multiple-splits", &["Proj18Task70BS01", "Proj18Task70SR02", "Proj18Task70DEP3"]),
+    ("marker-t", &["Proj14T3ProviderA5", "Proj14T3ReviewB7"]),
+    ("shared-prefix-tie", &["Proj813BoundaryGold23", "Proj813BoundarySilver24"]),
+    ("missing-suffix", &["Proj14T3ProviderA", "Proj14T3OtherB9"]),
+    ("collision-a", &["Proj18Task70BS01"]),
+    ("collision-b", &["Proj18Task70BS01"]),
+    ("cross-project", &["Proj18Task70BS01", "Proj19Task70BS01"]),
 ];
 
 fn naming_fixture_content(sid: &str) -> String {
     format!(
-        "{{\"type\":\"session\",\"version\":3,\"id\":\"{sid}\",\"timestamp\":\"2026-03-04T05:06:07.000Z\",\"cwd\":\"C:\\\\SYNTHETIC\\\\p0c2\",\"title\":\"synthetic naming fixture\",\"parentSession\":\"p0c2-parent\"}}\n{{\"type\":\"message\",\"id\":\"{sid}-e1\",\"parentId\":null,\"timestamp\":\"2026-03-04T05:06:08.000Z\",\"message\":{{\"role\":\"user\",\"content\":[{{\"type\":\"text\",\"text\":\"SYNTHETIC NAMING TOKEN\"}}]}}}}\n"
+        "{{\"type\":\"session\",\"version\":3,\"id\":\"{sid}\",\"timestamp\":\"2026-03-04T05:06:07.000Z\",\"cwd\":\"C:\\\\SYNTHETIC\\\\naming\",\"title\":\"synthetic naming fixture\",\"parentSession\":\"naming-parent\"}}\n{{\"type\":\"message\",\"id\":\"{sid}-e1\",\"parentId\":null,\"timestamp\":\"2026-03-04T05:06:08.000Z\",\"message\":{{\"role\":\"user\",\"content\":[{{\"type\":\"text\",\"text\":\"SYNTHETIC NAMING TOKEN\"}}]}}}}\n"
     )
 }
 
@@ -2096,14 +2087,14 @@ fn cmd_fixture_naming(args: &[String]) -> Result<()> {
         let dir = omp.join(parent);
         fs::create_dir_all(&dir).map_err(|e| err(format!("create {}: {e}", dir.display())))?;
         for name in *names {
-            let sid = format!("p0c2-{parent}-{name}");
+            let sid = format!("naming-{parent}-{name}");
             let path = dir.join(format!("{name}.jsonl"));
             fs::write(&path, naming_fixture_content(&sid))
                 .map_err(|e| err(format!("write {}: {e}", path.display())))?;
             written += 1;
         }
     }
-    println!("wrote {written} synthetic P0c-2 naming fixtures to {}", out.display());
+    println!("wrote {written} synthetic naming fixtures to {}", out.display());
     Ok(())
 }
 
@@ -2307,7 +2298,7 @@ fn cmd_audit_naming(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-// --------------------------------------------- P0c-3 parentSession delegation
+// ----------------------------------------------- parentSession delegation
 
 const DELEGATION_TS: &str = "2026-03-05T06:07:08.000Z";
 
@@ -2340,7 +2331,7 @@ fn delegation_session_line(id: &str, parent: Option<&str>) -> String {
         .map(|p| format!(",\"parentSession\":\"{p}\""))
         .unwrap_or_default();
     format!(
-        "{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"{DELEGATION_TS}\",\"cwd\":\"C:\\\\SYNTHETIC\\\\p0c3\",\"title\":\"synthetic delegation fixture\"{parent_field}}}\n"
+        "{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"{DELEGATION_TS}\",\"cwd\":\"C:\\\\SYNTHETIC\\\\delegation\",\"title\":\"synthetic delegation fixture\"{parent_field}}}\n"
     )
 }
 
@@ -2378,7 +2369,7 @@ fn cmd_fixture_delegation(args: &[String]) -> Result<()> {
         written += 1;
     }
     println!(
-        "wrote {written} synthetic P0c-3 delegation fixtures to {}",
+        "wrote {written} synthetic delegation fixtures to {}",
         out.display()
     );
     Ok(())
@@ -2544,13 +2535,13 @@ fn cmd_audit_delegation(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-// ------------------------------------------------------- P0c-4 marker audit
+// ------------------------------------------------------------ marker audit
 
 // Synthetic markers only. One OMP session carries allowlisted user/assistant
 // text plus deliberately marker-bearing thinking, tool output and call
 // arguments that the allowlist must never project as prose.
 const MARKER_FIXTURE_LINES: &[&str] = &[
-    r#"{"type":"session","version":3,"id":"marker-fixture-session","timestamp":"2026-03-06T07:08:09.000Z","cwd":"C:\\SYNTHETIC\\p0c4","title":"synthetic marker fixture"}"#,
+    r#"{"type":"session","version":3,"id":"marker-fixture-session","timestamp":"2026-03-06T07:08:09.000Z","cwd":"C:\\SYNTHETIC\\markers","title":"synthetic marker fixture"}"#,
     r#"{"type":"message","id":"marker-e1","parentId":null,"timestamp":"2026-03-06T07:08:10.000Z","message":{"role":"user","content":[{"type":"text","text":"Please implement task_id=SYN-A1 and task_id=SYN-A2 in the parser."}]}}"#,
     r#"{"type":"message","id":"marker-e2","parentId":null,"timestamp":"2026-03-06T07:08:11.000Z","message":{"role":"assistant","content":[{"type":"text","text":"I will work on task_id=SYN-A1. Please implement task_id=SYN-A1 again."}]}}"#,
     r#"{"type":"message","id":"marker-e3","parentId":null,"timestamp":"2026-03-06T07:08:12.000Z","message":{"role":"user","content":[{"type":"text","text":"Earlier we mentioned task_id=SYN-M1 for context only."}]}}"#,
@@ -2561,7 +2552,7 @@ const MARKER_FIXTURE_LINES: &[&str] = &[
     r#"{"type":"message","id":"marker-e8","parentId":null,"timestamp":"2026-03-06T07:08:17.000Z","message":{"role":"toolResult","toolCallId":"marker-call","content":[{"type":"text","text":"tool output only: task_id=SYN-TOOL assigned here"}]}}"#,
 ];
 
-// ------------------------------------------------ P0c-5 resolve fixture
+// ------------------------------------------------------- resolve fixture
 
 const RESOLVE_TS: &str = "2026-03-07T08:09:10.000Z";
 
@@ -2578,13 +2569,13 @@ struct ResolveFixtureFile {
 // parentSession pair without a task grammar.
 const RESOLVE_FIXTURE: &[ResolveFixtureFile] = &[
     ResolveFixtureFile {
-        rel: "p0c5/S10Task101Alpha1.jsonl",
+        rel: "resolve/Proj10Task101Alpha1.jsonl",
         id: "fx-101-alpha",
         parent: None,
         messages: &[("user", "Please implement task_id=101 in the parser.")],
     },
     ResolveFixtureFile {
-        rel: "p0c5/S10Task102Beta1.jsonl",
+        rel: "resolve/Proj10Task102Beta1.jsonl",
         id: "fx-102-beta",
         parent: None,
         messages: &[(
@@ -2593,19 +2584,19 @@ const RESOLVE_FIXTURE: &[ResolveFixtureFile] = &[
         )],
     },
     ResolveFixtureFile {
-        rel: "p0c5/S10Task103Gamma1.jsonl",
+        rel: "resolve/Proj10Task103Gamma1.jsonl",
         id: "fx-103-gamma-1",
         parent: None,
         messages: &[("assistant", "Working on the naming grammar only.")],
     },
     ResolveFixtureFile {
-        rel: "p0c5/S10Task103Gamma3.jsonl",
+        rel: "resolve/Proj10Task103Gamma3.jsonl",
         id: "fx-103-gamma-3",
         parent: None,
         messages: &[("user", "Same task, later attempt label.")],
     },
     ResolveFixtureFile {
-        rel: "p0c5/S10Task108Eta1.jsonl",
+        rel: "resolve/Proj10Task108Eta1.jsonl",
         id: "fx-108-eta",
         parent: None,
         messages: &[(
@@ -2614,19 +2605,19 @@ const RESOLVE_FIXTURE: &[ResolveFixtureFile] = &[
         )],
     },
     ResolveFixtureFile {
-        rel: "p0c5/S20Task55Gold1.jsonl",
-        id: "fx-55-s20",
+        rel: "resolve/Proj20Task55Gold1.jsonl",
+        id: "fx-55-alpha",
         parent: None,
-        messages: &[("user", "Implement task_id=55 for project S20.")],
+        messages: &[("user", "Implement task_id=55 for project Proj20.")],
     },
     ResolveFixtureFile {
-        rel: "p0c5/S21Task55Gold2.jsonl",
-        id: "fx-55-s21",
+        rel: "resolve/Proj21Task55Gold2.jsonl",
+        id: "fx-55-beta",
         parent: None,
-        messages: &[("assistant", "Implement task_id=55 for project S21.")],
+        messages: &[("assistant", "Implement task_id=55 for project Proj21.")],
     },
     ResolveFixtureFile {
-        rel: "p0c5/session-notes.jsonl",
+        rel: "resolve/session-notes.jsonl",
         id: "fx-notes",
         parent: None,
         messages: &[(
@@ -2635,7 +2626,7 @@ const RESOLVE_FIXTURE: &[ResolveFixtureFile] = &[
         )],
     },
     ResolveFixtureFile {
-        rel: "p0c5/session-mention.jsonl",
+        rel: "resolve/session-mention.jsonl",
         id: "fx-mention",
         parent: None,
         messages: &[(
@@ -2644,13 +2635,13 @@ const RESOLVE_FIXTURE: &[ResolveFixtureFile] = &[
         )],
     },
     ResolveFixtureFile {
-        rel: "p0c5/syn-parent-root.jsonl",
+        rel: "resolve/syn-parent-root.jsonl",
         id: "syn-parent-root",
         parent: None,
         messages: &[("user", "root synthetic session")],
     },
     ResolveFixtureFile {
-        rel: "p0c5/syn-parent-child.jsonl",
+        rel: "resolve/syn-parent-child.jsonl",
         id: "syn-parent-child",
         parent: Some("syn-parent-root"),
         messages: &[("user", "delegated synthetic session")],
@@ -2662,7 +2653,7 @@ fn resolve_session_line(id: &str, parent: Option<&str>) -> String {
         .map(|value| format!(",\"parentSession\":\"{value}\""))
         .unwrap_or_default();
     format!(
-        "{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"{RESOLVE_TS}\",\"cwd\":\"C:\\\\SYNTHETIC\\\\p0c5\",\"title\":\"synthetic resolve fixture\"{parent_field}}}\n"
+        "{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"{RESOLVE_TS}\",\"cwd\":\"C:\\\\SYNTHETIC\\\\resolve\",\"title\":\"synthetic resolve fixture\"{parent_field}}}\n"
     )
 }
 
@@ -2692,14 +2683,14 @@ fn cmd_fixture_resolve(args: &[String]) -> Result<()> {
         fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
     }
     println!(
-        "wrote {} synthetic P0c-5 resolve fixtures to {}",
+        "wrote {} synthetic resolve fixtures to {}",
         RESOLVE_FIXTURE.len(),
         out.display()
     );
     Ok(())
 }
 
-// -------------------------------------------- P0c-9 dispatch fixture
+// ------------------------------------------------------ dispatch fixture
 
 const DISPATCH_TS: &str = "2026-03-08T09:10:11.000Z";
 const DISPATCH_PARENT_SESSION: &str = "dispatch-fixture-parent";
@@ -2742,7 +2733,7 @@ struct DispatchFixtureFile {
     raw_lines: &'static [&'static str],
 }
 
-// Synthetic only, shaped exactly like the native OMP v19.0.0 P0c-8
+// Synthetic only, shaped exactly like native OMP dispatch
 // records. The parent journal carries positive, rejected and competing
 // claims; each child journal is the only place its link is valid.
 const DISPATCH_PARENTS: &[DispatchFixtureParent] = &[
@@ -2751,7 +2742,7 @@ const DISPATCH_PARENTS: &[DispatchFixtureParent] = &[
         parent_session_id: DISPATCH_PARENT_SESSION,
         parent_tool_call_id: Some("call-410"),
         spawn_index: 0,
-        project: "S30",
+        project: "Proj30",
         task: "410",
         attempt: "1",
     },
@@ -2760,7 +2751,7 @@ const DISPATCH_PARENTS: &[DispatchFixtureParent] = &[
         parent_session_id: DISPATCH_PARENT_SESSION,
         parent_tool_call_id: Some("call-10410"),
         spawn_index: 1,
-        project: "S30",
+        project: "Proj30",
         task: "10410",
         attempt: "1",
     },
@@ -2871,7 +2862,7 @@ const DISPATCH_RAW_LINES: &[&str] = &[
 
 const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
     DispatchFixtureFile {
-        rel: "p0c9/parent-root.jsonl",
+        rel: "dispatch/parent-root.jsonl",
         session_id: DISPATCH_PARENT_SESSION,
         messages: &[("user", "dispatch fixture root session")],
         parents: DISPATCH_PARENTS,
@@ -2879,7 +2870,7 @@ const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
         raw_lines: DISPATCH_RAW_LINES,
     },
     DispatchFixtureFile {
-        rel: "p0c9/S30Task410Alpha1.jsonl",
+        rel: "dispatch/Proj30Task410Alpha1.jsonl",
         session_id: "dispatch-child-410",
         messages: &[("assistant", "Tracked child for the first shared-suffix task.")],
         parents: &[],
@@ -2890,7 +2881,7 @@ const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
         raw_lines: &[],
     },
     DispatchFixtureFile {
-        rel: "p0c9/S30Task10410Beta1.jsonl",
+        rel: "dispatch/Proj30Task10410Beta1.jsonl",
         session_id: "dispatch-child-10410",
         messages: &[("assistant", "Tracked child for the second shared-suffix task.")],
         parents: &[],
@@ -2901,7 +2892,7 @@ const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
         raw_lines: &[],
     },
     DispatchFixtureFile {
-        rel: "p0c9/TrackedOnlyGamma2.jsonl",
+        rel: "dispatch/TrackedOnlyGamma2.jsonl",
         session_id: "dispatch-child-only",
         messages: &[("assistant", "Tracked child without a name-grammar key.")],
         parents: &[],
@@ -2912,7 +2903,7 @@ const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
         raw_lines: &[],
     },
     DispatchFixtureFile {
-        rel: "p0c9/S99Task999Delta3.jsonl",
+        rel: "dispatch/Proj99Task999Delta3.jsonl",
         session_id: "dispatch-child-conflict",
         messages: &[("assistant", "Child whose file name disagrees with its dispatch identity.")],
         parents: &[],
@@ -2923,7 +2914,7 @@ const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
         raw_lines: &[],
     },
     DispatchFixtureFile {
-        rel: "p0c9/DupParentZeta1.jsonl",
+        rel: "dispatch/DupParentZeta1.jsonl",
         session_id: "dispatch-child-dup-parent",
         messages: &[("assistant", "Child for a duplicated parent claim.")],
         parents: &[],
@@ -2934,7 +2925,7 @@ const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
         raw_lines: &[],
     },
     DispatchFixtureFile {
-        rel: "p0c9/DupChildEta1.jsonl",
+        rel: "dispatch/DupChildEta1.jsonl",
         session_id: "dispatch-child-dup-child",
         messages: &[("assistant", "Child carrying a duplicated link.")],
         parents: &[],
@@ -2951,7 +2942,7 @@ const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
         raw_lines: &[],
     },
     DispatchFixtureFile {
-        rel: "p0c9/WrongChildTheta1.jsonl",
+        rel: "dispatch/WrongChildTheta1.jsonl",
         session_id: "dispatch-child-wrong",
         messages: &[("assistant", "Child whose link names another session.")],
         parents: &[],
@@ -2962,7 +2953,7 @@ const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
         raw_lines: &[],
     },
     DispatchFixtureFile {
-        rel: "p0c9/MismatchParentIota1.jsonl",
+        rel: "dispatch/MismatchParentIota1.jsonl",
         session_id: "dispatch-child-mismatch",
         messages: &[("assistant", "Child whose parent record names another session.")],
         parents: &[],
@@ -2973,7 +2964,7 @@ const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
         raw_lines: &[],
     },
     DispatchFixtureFile {
-        rel: "p0c9/OrphanChildKappa1.jsonl",
+        rel: "dispatch/OrphanChildKappa1.jsonl",
         session_id: "dispatch-child-orphan",
         messages: &[("assistant", "Child carrying a link with no parent record.")],
         parents: &[],
@@ -2984,7 +2975,7 @@ const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
         raw_lines: &[],
     },
     DispatchFixtureFile {
-        rel: "p0c9/CompetingChildLambda1.jsonl",
+        rel: "dispatch/CompetingChildLambda1.jsonl",
         session_id: "dispatch-child-competing",
         messages: &[("assistant", "Child claimed by two dispatch identities.")],
         parents: &[],
@@ -3001,7 +2992,7 @@ const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
         raw_lines: &[],
     },
     DispatchFixtureFile {
-        rel: "p0c9/S40Task888Legacy1.jsonl",
+        rel: "dispatch/Proj40Task888Legacy1.jsonl",
         session_id: "dispatch-legacy-child",
         messages: &[(
             "user",
@@ -3015,7 +3006,7 @@ const DISPATCH_FIXTURE: &[DispatchFixtureFile] = &[
 
 fn dispatch_session_line(id: &str) -> String {
     format!(
-        "{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"{DISPATCH_TS}\",\"cwd\":\"C:\\\\SYNTHETIC\\\\p0c9\",\"title\":\"synthetic dispatch fixture\"}}\n"
+        "{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"{DISPATCH_TS}\",\"cwd\":\"C:\\\\SYNTHETIC\\\\dispatch\",\"title\":\"synthetic dispatch fixture\"}}\n"
     )
 }
 
@@ -3087,7 +3078,7 @@ fn cmd_fixture_dispatch(args: &[String]) -> Result<()> {
         fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
     }
     println!(
-        "wrote {} synthetic P0c-9 dispatch fixtures to {}",
+        "wrote {} synthetic dispatch fixtures to {}",
         DISPATCH_FIXTURE.len(),
         out.display()
     );
@@ -3439,7 +3430,7 @@ fn cmd_motif(args: &[String]) -> Result<()> {
 }
 
 const MOTIF_TS: &str = "2026-11-02T00:00:00.000Z";
-const MOTIF_PARENT_SESSION: &str = "p0d2-fixture-parent";
+const MOTIF_PARENT_SESSION: &str = "motif-fixture-parent";
 
 const M_A1: &str = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
 const M_A2: &str = "a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2";
@@ -3468,67 +3459,67 @@ struct MotifFixtureTask {
 // independent samples.
 const MOTIF_FIXTURE_TASKS: &[MotifFixtureTask] = &[
     MotifFixtureTask {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_A1,
         task: "1",
         attempt: "a1",
-        session_id: "p0d2-child-1-a1",
+        session_id: "motif-child-1-a1",
         tools: &["t1", "t2", "t3", "t4"],
     },
     MotifFixtureTask {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_A2,
         task: "1",
         attempt: "a2",
-        session_id: "p0d2-child-1-a2",
+        session_id: "motif-child-1-a2",
         tools: &["t1", "t2", "x1", "t3", "t4"],
     },
     MotifFixtureTask {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_A3,
         task: "1",
         attempt: "a3",
-        session_id: "p0d2-child-1-a3",
+        session_id: "motif-child-1-a3",
         tools: &["t1", "t2", "t3", "t4"],
     },
     MotifFixtureTask {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_B1,
         task: "2",
         attempt: "b1",
-        session_id: "p0d2-child-2-b1",
+        session_id: "motif-child-2-b1",
         tools: &["t1", "t2", "y1", "t3", "t4"],
     },
     MotifFixtureTask {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_C1,
         task: "3",
         attempt: "c1",
-        session_id: "p0d2-child-3-c1",
+        session_id: "motif-child-3-c1",
         tools: &["t1", "t2", "z1", "t4"],
     },
     MotifFixtureTask {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_E1,
         task: "9",
         attempt: "a1",
-        session_id: "p0d2-child-9-a1",
+        session_id: "motif-child-9-a1",
         tools: &[],
     },
     MotifFixtureTask {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_G1,
         task: "7",
         attempt: "g1",
-        session_id: "p0d2-child-7-g1",
+        session_id: "motif-child-7-g1",
         tools: &["s1", "s2", "s3", "s4"],
     },
     MotifFixtureTask {
-        project: "P0D7",
+        project: "MotifBeta",
         dispatch_id: M_G2,
         task: "7",
         attempt: "g2",
-        session_id: "p0d7-child-7-g2",
+        session_id: "motif-alt-child-7-g2",
         tools: &["s1", "s2", "s3", "s4"],
     },
 ];
@@ -3541,8 +3532,8 @@ fn motif_session_line(id: &str) -> String {
             "version": 3,
             "id": id,
             "timestamp": MOTIF_TS,
-            "cwd": "C:\\SYNTHETIC\\p0d2",
-            "title": "synthetic P0d-2 motif fixture"
+            "cwd": "C:\\SYNTHETIC\\motif",
+            "title": "synthetic motif fixture"
         })
     )
 }
@@ -3624,7 +3615,7 @@ fn cmd_fixture_motif(args: &[String]) -> Result<()> {
     for (spawn, task) in MOTIF_FIXTURE_TASKS.iter().enumerate() {
         parent.push_str(&motif_parent_line(spawn as u32, task));
     }
-    let parent_path = omp.join("p0d2").join("parent.jsonl");
+    let parent_path = omp.join("motif").join("parent.jsonl");
     if let Some(dir) = parent_path.parent() {
         fs::create_dir_all(dir).map_err(|e| err(format!("create {}: {e}", dir.display())))?;
     }
@@ -3654,7 +3645,7 @@ fn cmd_fixture_motif(args: &[String]) -> Result<()> {
             }
         }
         let path = omp
-            .join("p0d2")
+            .join("motif")
             .join(format!(
                 "child-{}-{}-{}.jsonl",
                 task.project, task.task, task.attempt
@@ -3663,7 +3654,7 @@ fn cmd_fixture_motif(args: &[String]) -> Result<()> {
     }
 
     println!(
-        "wrote {} synthetic P0d-2 motif fixture tasks to {}",
+        "wrote {} synthetic motif fixture tasks to {}",
         MOTIF_FIXTURE_TASKS.len(),
         out.display()
     );
@@ -3683,10 +3674,10 @@ fn cmd_fixture_markers(args: &[String]) -> Result<()> {
         content.push_str(line);
         content.push('\n');
     }
-    let path = omp.join("synthetic-p0c4-markers.jsonl");
+    let path = omp.join("synthetic-markers-markers.jsonl");
     fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
     println!(
-        "wrote {} synthetic P0c-4 marker fixture lines to {}",
+        "wrote {} synthetic marker fixture lines to {}",
         MARKER_FIXTURE_LINES.len(),
         out.display()
     );
@@ -3812,7 +3803,7 @@ fn cmd_audit_markers(args: &[String]) -> Result<()> {
             "Only user/assistant prose blocks that verify by span hash and block digest are scanned; tool output and thinking markers cannot appear.",
             "Multiple markers, repeated references and every occurrence are retained separately; no first-token or single-session promotion exists.",
             "Assignment-context, mention and ambiguous statuses remain candidate signals with their cues and reasons; ambiguity is never resolved by this rule.",
-            "No TaskKey, assigned_to edge or session-level inference is produced; reconciling signals is P0c-5."
+            "No TaskKey, assigned_to edge or session-level inference is produced; reconciling signals happens in task resolution."
         ]
     });
     emit(&v, args);
@@ -4086,7 +4077,7 @@ fn cmd_adapter(args: &[String]) -> Result<()> {
 }
 
 
-// ------------------------------------------------------- P1 work projection
+// ---------------------------------------------------------- work projection
 
 struct WorkFile {
     file_id: u32,
@@ -4400,7 +4391,7 @@ fn project_work_file(
 fn cmd_work_project(args: &[String]) -> Result<()> {
     let (idx, store, generation) = load_work(args)?;
     let window = parse_work_window(args)?;
-    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| DEFAULT_OMP.to_string());
+    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| config::omp_root());
     let limit = opt(args, "--limit").and_then(|s| s.parse::<usize>().ok());
     let selected = collect_work_files(&idx, &omp_root, window, limit)?;
     let projected: Vec<ProjectedWork> = selected
@@ -4494,7 +4485,7 @@ fn cmd_work_project(args: &[String]) -> Result<()> {
 
 fn cmd_work_session(args: &[String]) -> Result<()> {
     let (idx, store, generation) = load_work(args)?;
-    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| DEFAULT_OMP.to_string());
+    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| config::omp_root());
     let file_id = if let Some(session) = opt(args, "--session") {
         let session_idx = idx
             .session_by_id(&session)
@@ -4618,9 +4609,9 @@ fn cmd_work_compare(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-// ------------------------------------------- P1 explicit attempt delta
+// ----------------------------------------------- explicit attempt delta
 
-const DELTA_PARENT_SESSION: &str = "s4t3-parent";
+const DELTA_PARENT_SESSION: &str = "delta-parent";
 const D_DELTA_BEFORE: &str = "ab000001-0000-4000-8000-000000000001";
 const D_DELTA_AFTER: &str = "ab000002-0000-4000-8000-000000000002";
 const D_DELTA_LATEST: &str = "ab000003-0000-4000-8000-000000000003";
@@ -4636,7 +4627,7 @@ fn delta_session_line(id: &str, ts: &str) -> String {
         "{}\n",
         json!({
             "type": "session", "version": 3, "id": id, "timestamp": ts,
-            "cwd": "C:\\SYNTHETIC\\s4t3", "title": "synthetic attempt-delta fixture"
+            "cwd": "C:\\SYNTHETIC\\delta", "title": "synthetic attempt-delta fixture"
         })
     )
 }
@@ -4757,7 +4748,7 @@ fn cmd_fixture_delta(args: &[String]) -> Result<()> {
     );
     let omp = out.join("omp");
     let codex = out.join("codex");
-    let dir = omp.join("s4t3");
+    let dir = omp.join("delta");
     fs::create_dir_all(&dir).map_err(|e| err(format!("create {}: {e}", dir.display())))?;
     fs::create_dir_all(&codex).map_err(|e| err(format!("create {}: {e}", codex.display())))?;
     let write = |name: &str, content: String| -> Result<()> {
@@ -4766,22 +4757,22 @@ fn cmd_fixture_delta(args: &[String]) -> Result<()> {
     };
 
     let mut parent = delta_session_line(DELTA_PARENT_SESSION, &delta_ts(1, 0));
-    parent.push_str(&delta_parent_line(D_DELTA_BEFORE, "S31", "T701", "1", 0, &delta_ts(1, 0)));
-    parent.push_str(&delta_parent_line(D_DELTA_AFTER, "S31", "T701", "2", 1, &delta_ts(2, 0)));
-    parent.push_str(&delta_parent_line(D_DELTA_LATEST, "S31", "T701", "0", 2, &delta_ts(3, 0)));
-    parent.push_str(&delta_parent_line(D_DELTA_CROSS, "S32", "T701", "1", 3, &delta_ts(1, 0)));
-    parent.push_str(&delta_parent_line(D_DELTA_OTHER, "S31", "T702", "1", 4, &delta_ts(1, 0)));
+    parent.push_str(&delta_parent_line(D_DELTA_BEFORE, "Proj31", "T701", "1", 0, &delta_ts(1, 0)));
+    parent.push_str(&delta_parent_line(D_DELTA_AFTER, "Proj31", "T701", "2", 1, &delta_ts(2, 0)));
+    parent.push_str(&delta_parent_line(D_DELTA_LATEST, "Proj31", "T701", "0", 2, &delta_ts(3, 0)));
+    parent.push_str(&delta_parent_line(D_DELTA_CROSS, "Proj32", "T701", "1", 3, &delta_ts(1, 0)));
+    parent.push_str(&delta_parent_line(D_DELTA_OTHER, "Proj31", "T702", "1", 4, &delta_ts(1, 0)));
     parent.push_str(&delta_message_line("p-u1", None, &delta_ts(1, 1), "user", false, 0));
     write("parent.jsonl", parent)?;
 
-    let mut before = delta_session_line("s4t3-before", &delta_ts(1, 0));
-    before.push_str(&delta_child_link_line(D_DELTA_BEFORE, "s4t3-before", &delta_ts(1, 1)));
+    let mut before = delta_session_line("delta-before", &delta_ts(1, 0));
+    before.push_str(&delta_child_link_line(D_DELTA_BEFORE, "delta-before", &delta_ts(1, 1)));
     before.push_str(&delta_message_line("u1", None, &delta_ts(1, 2), "user", false, 0));
     before.push_str(&delta_message_line("a1", Some("u1"), &delta_ts(1, 3), "assistant", true, 0));
     write("child-before.jsonl", before)?;
 
-    let mut after = delta_session_line("s4t3-after", &delta_ts(2, 0));
-    after.push_str(&delta_child_link_line(D_DELTA_AFTER, "s4t3-after", &delta_ts(2, 1)));
+    let mut after = delta_session_line("delta-after", &delta_ts(2, 0));
+    after.push_str(&delta_child_link_line(D_DELTA_AFTER, "delta-after", &delta_ts(2, 1)));
     after.push_str(&delta_message_line("u1", None, &delta_ts(2, 2), "user", false, 0));
     after.push_str(&delta_message_line("a1", Some("u1"), &delta_ts(2, 3), "assistant", true, 2));
     after.push_str(&format!(
@@ -4797,33 +4788,33 @@ fn cmd_fixture_delta(args: &[String]) -> Result<()> {
     after.push_str(&delta_message_line("a2", Some("cm1"), &delta_ts(2, 8), "assistant", true, 0));
     write("child-after.jsonl", after)?;
 
-    let mut latest = delta_session_line("s4t3-latest", &delta_ts(3, 0));
-    latest.push_str(&delta_child_link_line(D_DELTA_LATEST, "s4t3-latest", &delta_ts(3, 1)));
+    let mut latest = delta_session_line("delta-latest", &delta_ts(3, 0));
+    latest.push_str(&delta_child_link_line(D_DELTA_LATEST, "delta-latest", &delta_ts(3, 1)));
     latest.push_str(&delta_message_line("u1", None, &delta_ts(3, 2), "user", false, 0));
     latest.push_str(&delta_message_line("b1", Some("u1"), &delta_ts(3, 3), "assistant", true, 0));
     latest.push_str(&delta_message_line("u2", Some("b1"), &delta_ts(3, 4), "user", false, 0));
     latest.push_str(&delta_message_line("b2", Some("u2"), &delta_ts(3, 5), "assistant", true, 0));
     write("child-latest.jsonl", latest)?;
 
-    let mut cross = delta_session_line("s4t3-cross", &delta_ts(1, 0));
-    cross.push_str(&delta_child_link_line(D_DELTA_CROSS, "s4t3-cross", &delta_ts(1, 1)));
+    let mut cross = delta_session_line("delta-cross", &delta_ts(1, 0));
+    cross.push_str(&delta_child_link_line(D_DELTA_CROSS, "delta-cross", &delta_ts(1, 1)));
     cross.push_str(&delta_message_line("u1", None, &delta_ts(1, 2), "user", false, 0));
     cross.push_str(&delta_message_line("a1", Some("u1"), &delta_ts(1, 3), "assistant", true, 0));
     write("child-cross.jsonl", cross)?;
 
-    let mut other = delta_session_line("s4t3-other-task", &delta_ts(1, 0));
-    other.push_str(&delta_child_link_line(D_DELTA_OTHER, "s4t3-other-task", &delta_ts(1, 1)));
+    let mut other = delta_session_line("delta-other-task", &delta_ts(1, 0));
+    other.push_str(&delta_child_link_line(D_DELTA_OTHER, "delta-other-task", &delta_ts(1, 1)));
     other.push_str(&delta_message_line("u1", None, &delta_ts(1, 2), "user", false, 0));
     other.push_str(&delta_message_line("a1", Some("u1"), &delta_ts(1, 3), "assistant", true, 0));
     write("child-other-task.jsonl", other)?;
 
-    let mut unconfirmed = delta_session_line("s4t3-unconfirmed", &delta_ts(1, 0));
+    let mut unconfirmed = delta_session_line("delta-unconfirmed", &delta_ts(1, 0));
     unconfirmed.push_str(&delta_prose_candidate_line("u1", None, &delta_ts(1, 2)));
     unconfirmed.push_str(&delta_message_line("a1", Some("u1"), &delta_ts(1, 3), "assistant", true, 0));
     write("child-unconfirmed.jsonl", unconfirmed)?;
 
     println!(
-        "wrote 7 synthetic P1 attempt-delta OMP fixtures to {}",
+        "wrote 7 synthetic attempt-delta OMP fixtures to {}",
         out.display()
     );
     Ok(())
@@ -5114,7 +5105,7 @@ fn cmd_work_delta(args: &[String]) -> Result<()> {
         });
     }
     let order = ase_work::order_attempts(&keys, &before_session, &after_session)?;
-    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| DEFAULT_OMP.to_string());
+    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| config::omp_root());
     let before_out = opt(args, "--before-out");
     let after_out = opt(args, "--after-out");
     let (before_projection, before_membership, before_reopen) = project_delta_attempt(
@@ -5266,43 +5257,43 @@ fn cmd_fixture_adapter(args: &[String]) -> Result<()> {
 
     let parent_lines = vec![
         fixture_session("syn-root", "C:\\SYN\\demo", None),
-        fixture_task_call("call-a", &["S3T1A1"], "Target: ASE-S3-T1 attempt A1"),
-        fixture_task_result("call-a", "Spawned agent `S3T1A1` (job `S3T1A1`)."),
-        fixture_task_call("call-b", &["S3T2A1", "S3T2B1"], "Target: ASE-S3-T2 attempt A1"),
+        fixture_task_call("call-a", &["T1A1"], "Target: W1a attempt A1"),
+        fixture_task_result("call-a", "Spawned agent `T1A1` (job `T1A1`)."),
+        fixture_task_call("call-b", &["T2A1", "T2B1"], "Target: W2a attempt A1"),
         fixture_task_result(
             "call-b",
-            "Spawned 2 background agents using gold-task.\n- `S3T2A1` (job `S3T2A1`)\n- `S3T2B1` (job `S3T2B1`)",
+            "Spawned 2 background agents using gold-task.\n- `T2A1` (job `T2A1`)\n- `T2B1` (job `T2B1`)",
         ),
-        fixture_task_call("call-c", &["S3T9A1"], "Target: ASE-S3-T9 attempt A1"),
-        fixture_task_result("call-c", "Task S3T9A1 failed preflight: synthetic error"),
-        fixture_task_call("call-d", &["S3T1A1"], "Target: ASE-S3-T1 attempt A2"),
-        fixture_task_result("call-d", "Spawned agent `S3T4A1` (job `S3T4A1`)."),
-        fixture_task_call("call-e", &["S3T5A1"], "Target: ASE-S3-T5 attempt A1"),
-        fixture_task_result("call-e", "Spawned agent `S3T5A1` (job `S3T5A1`)."),
+        fixture_task_call("call-c", &["T9A1"], "Target: W9a attempt A1"),
+        fixture_task_result("call-c", "Task T9A1 failed preflight: synthetic error"),
+        fixture_task_call("call-d", &["T1A1"], "Target: W1a attempt A2"),
+        fixture_task_result("call-d", "Spawned agent `T4A1` (job `T4A1`)."),
+        fixture_task_call("call-e", &["T5A1"], "Target: W5a attempt A1"),
+        fixture_task_result("call-e", "Spawned agent `T5A1` (job `T5A1`)."),
     ];
     write_jsonl(&parent, &parent_lines)?;
 
-    write_jsonl(&side.join("S3T1A1.jsonl"), &child("S3T1A1", &parent_abs))?;
-    write_jsonl(&side.join("S3T2A1.jsonl"), &child("S3T2A1", &parent_abs))?;
-    write_jsonl(&side.join("S3T2B1.jsonl"), &child("S3T2B1", &parent_abs))?;
-    write_jsonl(&side.join("S3T4A1.jsonl"), &child("S3T4A1", &parent_abs))?;
+    write_jsonl(&side.join("T1A1.jsonl"), &child("T1A1", &parent_abs))?;
+    write_jsonl(&side.join("T2A1.jsonl"), &child("T2A1", &parent_abs))?;
+    write_jsonl(&side.join("T2B1.jsonl"), &child("T2B1", &parent_abs))?;
+    write_jsonl(&side.join("T4A1.jsonl"), &child("T4A1", &parent_abs))?;
     // Link conflict: the result names this child but its header names another
     // parent journal. Keep both facts; do not tie-break.
-    write_jsonl(&side.join("S3T5A1.jsonl"), &child("S3T5A1", &other_parent))?;
+    write_jsonl(&side.join("T5A1.jsonl"), &child("T5A1", &other_parent))?;
     fs::write(
-        side.join("S3T1A1.md"),
-        "Synthetic handoff\n- task_id: ASE-S3-T1\n- attempt_id: A1\n",
+        side.join("T1A1.md"),
+        "Synthetic handoff\n- task_id: W1a\n- attempt_id: A1\n",
     )
     .map_err(|e| err(format!("write synthetic handoff: {e}")))?;
     fs::write(
-        side.join("S3T2A1.md"),
-        "Synthetic handoff\n- task_id: ASE-S3-T2\n- attempt_id: A1\n",
+        side.join("T2A1.md"),
+        "Synthetic handoff\n- task_id: W2a\n- attempt_id: A1\n",
     )
     .map_err(|e| err(format!("write synthetic handoff: {e}")))?;
     println!("wrote synthetic stock adapter fixture to {}", out.display());
     Ok(())
 }
-// ------------------------------------------------------- P2 runtime analytics
+// -------------------------------------------------------- runtime analytics
 
 fn analytics_usage() {
     println!(
@@ -5347,7 +5338,7 @@ fn analytics_project_of_tree(tree_relpath: &str) -> Option<String> {
 fn cmd_analytics_project(args: &[String]) -> Result<()> {
     let (idx, store, generation) = load_work(args)?;
     let window = parse_work_window(args)?;
-    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| DEFAULT_OMP.to_string());
+    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| config::omp_root());
     let limit = opt(args, "--limit").and_then(|s| s.parse::<usize>().ok());
     let selected = collect_analytics_files(&idx, &omp_root, limit)?;
     let projected: Vec<ProjectedWork> = selected
@@ -5409,7 +5400,7 @@ fn cmd_analytics_project(args: &[String]) -> Result<()> {
 
 fn cmd_analytics_session(args: &[String]) -> Result<()> {
     let (idx, store, generation) = load_work(args)?;
-    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| DEFAULT_OMP.to_string());
+    let omp_root = opt(args, "--omp-root").unwrap_or_else(|| config::omp_root());
     let file_id = if let Some(session) = opt(args, "--session") {
         let session_idx = idx
             .session_by_id(&session)
@@ -5530,7 +5521,7 @@ fn cmd_analytics_reopen(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-// Synthetic producer-shaped OMP journals for a deterministic P2 check. No
+// Synthetic producer-shaped OMP journals for a deterministic runtime check. No
 // corpus path, prose or private identifier is written; each file isolates one
 // rule: parallel clocks, two projects sharing a model, active-leaf choice,
 // half-open period and missing producer fields.
@@ -5539,7 +5530,7 @@ fn fixture_analytics_session(id: &str, ts: &str) -> String {
         "{}\n",
         json!({
             "type": "session", "version": 3, "id": id, "timestamp": ts,
-            "cwd": "C:\\SYNTHETIC\\s5t2", "title": "synthetic runtime-analytics fixture"
+            "cwd": "C:\\SYNTHETIC\\analytics", "title": "synthetic runtime-analytics fixture"
         })
     )
 }
@@ -5623,7 +5614,7 @@ fn cmd_fixture_analytics(args: &[String]) -> Result<()> {
         fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))
     };
 
-    let mut parallel = fixture_analytics_session("s5t2-parallel", "2026-10-05T00:00:00.000Z");
+    let mut parallel = fixture_analytics_session("analytics-parallel", "2026-10-05T00:00:00.000Z");
     parallel.push_str(&fixture_analytics_user("u1", None, "2026-10-05T00:00:01.000Z"));
     parallel.push_str(&fixture_analytics_turn("a1", "u1", "2026-10-05T00:00:02.000Z",
         Some("fixture-parallel"), Some(1_791_158_402_000), Some(1_791_158_404_000),
@@ -5633,14 +5624,14 @@ fn cmd_fixture_analytics(args: &[String]) -> Result<()> {
         Some(2000.0), Some(700.0), Some(0.02), true));
     write("p-parallel/parallel.jsonl", parallel)?;
 
-    let mut second = fixture_analytics_session("s5t2-second", "2026-10-05T01:00:00.000Z");
+    let mut second = fixture_analytics_session("analytics-second", "2026-10-05T01:00:00.000Z");
     second.push_str(&fixture_analytics_user("u1", None, "2026-10-05T01:00:01.000Z"));
     second.push_str(&fixture_analytics_turn("b1", "u1", "2026-10-05T01:00:02.000Z",
         Some("fixture-parallel"), Some(1_791_162_002_000), Some(1_791_162_003_000),
         Some(1000.0), Some(200.0), Some(0.03), true));
     write("q-parallel/second.jsonl", second)?;
 
-    let mut branch = fixture_analytics_session("s5t2-branch", "2026-10-02T00:00:00.000Z");
+    let mut branch = fixture_analytics_session("analytics-branch", "2026-10-02T00:00:00.000Z");
     branch.push_str(&fixture_analytics_user("u1", None, "2026-10-02T00:00:01.000Z"));
     branch.push_str(&fixture_analytics_turn("a1", "u1", "2026-10-02T00:00:02.000Z",
         Some("fixture-branch"), Some(1_790_899_202_000), Some(1_790_899_203_000),
@@ -5653,7 +5644,7 @@ fn cmd_fixture_analytics(args: &[String]) -> Result<()> {
         Some(1000.0), Some(100.0), Some(0.20), true));
     write("p-branch/branch.jsonl", branch)?;
 
-    let mut window = fixture_analytics_session("s5t2-window", "2026-10-01T00:00:00.000Z");
+    let mut window = fixture_analytics_session("analytics-window", "2026-10-01T00:00:00.000Z");
     window.push_str(&fixture_analytics_user("u1", None, "2026-10-01T00:00:01.000Z"));
     window.push_str(&fixture_analytics_turn("before", "u1", "2026-09-30T23:59:59.000Z",
         Some("fixture-window"), Some(1_790_812_799_000), Some(1_790_812_799_500),
@@ -5666,7 +5657,7 @@ fn cmd_fixture_analytics(args: &[String]) -> Result<()> {
         Some(500.0), Some(50.0), Some(0.04), true));
     write("p-window/window.jsonl", window)?;
 
-    let mut gaps = fixture_analytics_session("s5t2-gaps", "2026-10-03T00:00:00.000Z");
+    let mut gaps = fixture_analytics_session("analytics-gaps", "2026-10-03T00:00:00.000Z");
     gaps.push_str(&fixture_analytics_user("u1", None, "2026-10-03T00:00:01.000Z"));
     gaps.push_str(&format!("{}\n", json!({
         "type": "message", "id": "n1", "parentId": "u1",
@@ -5680,7 +5671,7 @@ fn cmd_fixture_analytics(args: &[String]) -> Result<()> {
         Some(1000.0), Some(300.0), Some(0.05), true));
     write("p-gaps/gaps.jsonl", gaps)?;
 
-    println!("wrote 5 synthetic P2 runtime-analytics OMP fixtures to {}", out.display());
+    println!("wrote 5 synthetic runtime-analytics OMP fixtures to {}", out.display());
     Ok(())
 }
 

@@ -1,21 +1,21 @@
-//! P4 verdict import per `artifacts/sprint-7/ASE-S7-T1/contract-a1.md` §4.
+//! Verdict import for the local assertion layer.
 //!
 //! Verdicts are an imported judgment layer, never source evidence. The whole
-//! bundle is reopened by `p4_verify::verify` before anything is written, every
-//! row is checked in the contract order, and accepted assertions are stored in
-//! a separate local assertion file. No model, network, catalog or P4 gate
+//! bundle is reopened by `verify::verify` before anything is written, every
+//! row is checked in the documented order, and accepted assertions are stored
+//! in a separate local assertion file. No model, network, catalog or gate
 //! measurement is part of this module.
 
+use crate::verify::{self, value_digest, BUNDLE_VERSION};
 use ase_core::{err, Result};
 use ase_index::sha256_hex;
-use crate::p4_verify::{self, value_digest, BUNDLE_VERSION};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const VERDICTS_SCHEMA: &str = "ase-p4-verdicts-v1";
-const ASSERTIONS_SCHEMA: &str = "ase-p4-assertions-v1";
+const VERDICTS_SCHEMA: &str = "ase-verdicts-v1";
+const ASSERTIONS_SCHEMA: &str = "ase-assertions-v1";
 const ASSERTIONS_VERSION: &str = "1";
 
 #[derive(Clone)]
@@ -256,7 +256,7 @@ fn emit(report: &Value, as_json: bool) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(report).map_err(|e| err(format!("report: {e}")))?);
     } else {
         println!(
-            "p4 import verdicts: {}; verdicts {} ({} new, {} duplicate, {} rejected), assertions {}",
+            "import verdicts: {}; verdicts {} ({} new, {} duplicate, {} rejected), assertions {}",
             report["status"].as_str().unwrap_or("rejected"),
             report["verdicts_total"].as_u64().unwrap_or(0),
             report["accepted"].as_u64().unwrap_or(0),
@@ -275,7 +275,7 @@ fn report(summary: &Summary, verdicts: &Value, bundle: &Value, verdict_file_dige
     json!({
         "command": "import",
         "action": "verdicts",
-        "scope": "P4 imported judgment layer; no model, catalog join or gate measurement",
+        "scope": "imported judgment layer; no model, catalog join or gate measurement",
         "status": summary.status,
         "failure_code": summary.failure_code,
         "verdict_schema": VERDICTS_SCHEMA,
@@ -372,7 +372,7 @@ fn evidence_reopen(
     map_path: &Path,
     view: &BundleView,
 ) -> (Value, HashMap<String, &'static str>, HashMap<String, String>) {
-    let report = p4_verify::verify(dir, Some(map_path), None);
+    let report = verify::verify(dir, Some(map_path), None);
     let mut state: HashMap<String, &'static str> = view.evidence.iter().map(|id| (id.clone(), "unverified")).collect();
     let mut codes: HashMap<String, String> = HashMap::new();
     if report["status"].as_str() == Some("verified") {
@@ -503,8 +503,8 @@ fn check_rows(
             outcomes.push(reject("input_identity_mismatch", "bundle content judged is stale"));
             continue;
         }
-        // Mirrors the read-only cross-check in `p4_verify`: contract §4.2.
-        let expected = format!("as-{}", &value_digest(&p4_verify::assertion_body(&view.bundle, row))[..16]);
+        // Mirrors the read-only cross-check in `verify`: contract §4.2.
+        let expected = format!("as-{}", &value_digest(&verify::assertion_body(&view.bundle, row))[..16]);
         if assertion_id.as_deref() != Some(expected.as_str()) {
             outcomes.push(reject("assertion_id_conflict", "assertion id differs from content"));
             continue;

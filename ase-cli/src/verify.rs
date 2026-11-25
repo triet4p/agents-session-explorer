@@ -1,4 +1,4 @@
-//! P4 bundle verification per `artifacts/sprint-7/ASE-S7-T1/contract-a1.md` §6.
+//! Evidence-bundle verification against a private local source map.
 //!
 //! The bundle is read as data only. Every evidence row is reopened from a
 //! private local source map: source bytes are read again, the exact byte span
@@ -6,7 +6,7 @@
 //! strong block digest is recomputed, the paired tool result is resolved again,
 //! and the redaction policy is re-applied before the published excerpt is
 //! accepted. Nothing here imports a verdict, joins a catalog, calls a model or
-//! claims a P4 gate result. `verify --all` lives in `cmd_verify` and is untouched.
+//! claims a gate result. `verify --all` lives in `cmd_verify` and is untouched.
 
 use ase_core::{err, Result};
 use ase_index::sha256_hex;
@@ -17,14 +17,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-pub(crate) const BUNDLE_VERSION: &str = "ase-p4-bundle-v1";
-pub(crate) const MOTIF_SCHEMA: &str = "ase-p4-motif-v1";
-pub(crate) const REDACTION_POLICY: &str = "ase-p4-redact-v1";
-pub(crate) const EVIDENCE_RENDER: &str = "ase-p4-evidence-md-v1";
-pub(crate) const QUESTIONS_RENDER: &str = "ase-p4-questions-md-v1";
-pub(crate) const REPRESENTATIVE_POLICY: &str = "ase-p4-representatives-v1";
+pub(crate) const BUNDLE_VERSION: &str = "ase-bundle-v1";
+pub(crate) const MOTIF_SCHEMA: &str = "ase-motif-bundle-v1";
+pub(crate) const REDACTION_POLICY: &str = "ase-redact-v1";
+pub(crate) const EVIDENCE_RENDER: &str = "ase-evidence-md-v1";
+pub(crate) const QUESTIONS_RENDER: &str = "ase-questions-md-v1";
+pub(crate) const REPRESENTATIVE_POLICY: &str = "ase-representatives-v1";
 pub(crate) const SELECTOR_VERSION: &str = "block-v1";
-const LOCAL_MAP_SCHEMA: &str = "ase-p4-local-sources-v1";
+const LOCAL_MAP_SCHEMA: &str = "ase-local-sources-v1";
 
 #[derive(Clone)]
 struct Failure {
@@ -98,7 +98,7 @@ fn base_report() -> Value {
     json!({
         "command": "verify",
         "mode": "bundle",
-        "scope": "P4 bundle evidence reopen; no gate measurement",
+        "scope": "bundle evidence reopen; no gate measurement",
         "status": "unverified",
         "schema_checked": BUNDLE_VERSION,
         "evidence_total": 0,
@@ -157,7 +157,7 @@ fn top_failure(
     report.clone()
 }
 
-/// CLI entry point. A positional argument selects the P4 bundle form; the
+/// CLI entry point. A positional argument selects the bundle form; the
 /// legacy `--all` / `--sample` form never reaches this module.
 pub fn run_bundle(bundle: &str, args: &[String]) -> Result<()> {
     let local_map = opt_value(args, "--local-map").map(PathBuf::from);
@@ -172,7 +172,7 @@ pub fn run_bundle(bundle: &str, args: &[String]) -> Result<()> {
         println!("{rendered}");
     } else {
         println!(
-            "p4 verify: {}; evidence {}/{} ({} failed, {} unverified), motifs {}/{}, assertions {}/{}",
+            "bundle verify: {}; evidence {}/{} ({} failed, {} unverified), motifs {}/{}, assertions {}/{}",
             report["status"].as_str().unwrap_or("unverified"),
             report["evidence_verified"].as_u64().unwrap_or(0),
             report["evidence_total"].as_u64().unwrap_or(0),
@@ -427,7 +427,7 @@ pub(crate) fn derive_signature(block: &Value) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Redaction policy `ase-p4-redact-v1` (contract §3.7)
+// Redaction policy `ase-redact-v1` (contract §3.7)
 
 fn patterns() -> &'static Vec<(Regex, &'static str)> {
     static PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
@@ -911,7 +911,7 @@ fn check_verdicts(
     };
     report["assertions_total"] = json!(rows.len());
     let envelope_failure = if verdicts.get("schema").and_then(Value::as_str)
-        != Some("ase-p4-verdicts-v1")
+        != Some("ase-verdicts-v1")
     {
         Some(fail("schema_version_unsupported", "verdict file schema unsupported"))
     } else if verdicts.get("bundle_id").and_then(Value::as_str)
