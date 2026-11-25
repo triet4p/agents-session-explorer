@@ -90,3 +90,13 @@
 **Reason:** The worker is not always idle. The available run is not an isolated latency baseline; the effect of background load was not measured separately.
 
 **Consequences:** Keep the original measurements and the 50 ms target. Do not report a measured pass or treat the miss as blocking P0b acceptance.
+
+## [2026-11-25] Tách CLI theo nhóm lệnh, không đổi hợp đồng
+
+**Decision:** Giữ parser và router hiện tại, chuyển từng nhóm lệnh sang module theo nghiệp vụ, dùng điểm vào `run(args)` đã có và giữ `main.rs` chỉ điều phối.
+
+**Alternatives considered:** Giữ nguyên `main.rs` và tiếp tục thêm lệnh; chuyển đồng loạt sang một framework CLI; chia file theo số dòng.
+
+**Reason:** `main.rs` đang giữ cả vận hành bằng chứng, fixture và điều phối LLM; các nhóm này có vòng đời kiểm thử khác nhau. Di chuyển theo nhóm cho phép so từng bề mặt CLI với baseline mà không đưa thêm biến số từ parser hay schema.
+
+**Consequences:** Refactor không đổi help, exit code, output, schema hay cache identity. Xác minh LLM offline là mặc định; ngân sách provider thật và điều kiện ngoại lệ thuộc [Sprint 8](../../docs/sprint-plans/sprint-8.md).

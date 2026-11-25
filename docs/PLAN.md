@@ -25,6 +25,10 @@
 - [~] **T1 — Đồng bộ tài liệu:** README và CHANGELOG đã đối chiếu và commit `e693a37`; SCOPE đã đồng bộ trong worktree nhưng `commit_pending` do chung hunk với thay đổi có sẵn.
 - [x] **T2 — Chuẩn hóa mã:** bỏ tên mốc khỏi mã và schema chưa phát hành, bỏ đường dẫn mặc định phụ thuộc máy và khóa byte fixture khi checkout. Kiểm thử có mục tiêu và smoke CLI đạt; [review R2 PASS](../artifacts/T2/review-c1-r2.md), [checkpoint local](../artifacts/T2/checkpoints/checkpoint-r2.md) tại `88e51ec`. Không push stack hiện tại: commit trung gian vẫn chứa hồ sơ nội bộ đã được loại khỏi cây cuối.
 
+## Sprint tiếp theo
+
+**[Sprint 8 — Refactor theo ranh giới nghiệp vụ](sprint-plans/sprint-8.md):** đã lập kế hoạch, chưa triển khai. Tách router/nhóm lệnh trong `ase-cli/src/main.rs` và các file dài đã chọn theo coding conventions, giữ nguyên hành vi bằng đối chiếu baseline/candidate và review độc lập. Mặc định không gọi LLM provider thật; chỉ khi xác minh offline không giải quyết được một nghi vấn cụ thể, tối đa 10 request thật cho cả sprint. Không chạy lại cohort.
+
 ## Phạm vi các mốc
 
 1. **Trước P1 — định danh có bằng chứng, không cần plugin.** Chốt hợp đồng core–adapter rồi thử adapter OMP trên lịch sử stock: đối chiếu lời gọi `task` trong JSONL cha với journal/Markdown con, dùng `cwd` hoặc metadata để tìm repo ứng viên, rồi đưa manh mối task cho LLM đối chiếu plan/artifact. Core giữ địa chỉ và mở lại bằng chứng; mỗi adapter đóng gói riêng quy tắc của agent. Đánh giá riêng ba việc (ghép cha–con, tìm repo, đề xuất task) trên một mẫu nhỏ đối chiếu thủ công; báo đúng/sai/chưa xác định và độ phủ. Quan hệ cha–con không xác nhận repo hay task; giữ cả ứng viên mâu thuẫn hoặc nhiều task, không nâng thành membership cho `resolve task`/motif. Pilot không thay gate P0c/P0d.
