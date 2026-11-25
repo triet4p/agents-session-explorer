@@ -2,6 +2,10 @@
 //! unmodified OMP journals. It reads through a pinned `StockView` and never
 //! writes resolver or motif membership.
 
+mod claims;
+mod journal;
+mod link;
+mod provenance;
 pub mod extract;
 pub mod model;
 pub mod reopen;

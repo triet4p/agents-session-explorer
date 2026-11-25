@@ -426,7 +426,7 @@ fn path_evidence_and_selector_version_round_trip() {
         size: 1,
         manifest_digest: None,
     };
-    let ev = crate::scan::path_evidence(&file, "gen", "filename");
+    let ev = crate::provenance::path_evidence(&file, "gen", "filename");
     assert_eq!(ev.selector, "stock-sel-v1|path.filename");
     assert!(ev.block_digest.is_some());
 }
