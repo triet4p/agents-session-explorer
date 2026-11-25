@@ -96,5 +96,5 @@ Windows x64 setup and index-rebuild compatibility.
   records; untracked sessions stay unresolved.
 - The patch is not published as an upstream ref, tag or release asset; users
   obtain it from this support path at the release commit.
-- No claim about historic sessions, holdout membership, P0d, performance, or
+- No claim about historic sessions, holdout membership, motif detection, performance, or
   any non-`v19.0.0` OMP version is made here.

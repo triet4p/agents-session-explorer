@@ -385,8 +385,8 @@ Quy tắc:
 - Chọn đại diện **tất định**: sớm nhất, muộn nhất, lệch nhiều nhất, một lần có failure. Trần ~8k token/bundle.
 - **Redaction trước khi export**: chỉ `tool + args signature + N dòng đầu output`. Không xuất output thô (87% byte, có thể chứa đường dẫn/secret nội bộ) — bundle sẽ được paste vào LLM cloud.
 - `ase verify <bundle>` đọc lại raw tại từng span và so khớp excerpt. Không có bước này, export chỉ là văn bản trang trí.
-- `ase import verdicts <file> --bundle DIR --local-map FILE --store FILE` ghi phán đoán ngoài vào một lớp assertion riêng (`ase-p4-assertions-v1`), chỉ sau khi mở lại bundle và mọi evidence ref; `assertion_id` là khóa nội dung, nhập lại cùng nội dung không nhân đôi, ref từ bundle khác bị từ chối. Không gọi model.
-- `ase join skill-gap --store FILE --catalog FILE --bundle DIR --local-map FILE` đối chiếu assertion đã xác minh với catalog do người dùng đưa ra, so khớp chính xác `(kind, key/alias)`, phân biệt `match`/`no_match`/`ambiguous`/`insufficient_input` và tôn trọng `completeness[kind]`. Không khớp catalog không phải bằng chứng skill không tồn tại hoặc nên tạo; truy vết giữ `evidence_refs`/span không lộ đường dẫn nguồn. Không ghi store hay gọi model.
+- `ase import verdicts <file> --bundle DIR --local-map FILE --store FILE` ghi phán đoán ngoài vào một lớp assertion riêng (`ase-assertions-v1`), chỉ sau khi mở lại bundle và mọi evidence ref; `assertion_id` là khóa nội dung, nhập lại cùng nội dung không nhân đôi, ref từ bundle khác bị từ chối. Xem `artifacts/sprint-7/ASE-S7-T4/README.md` và contract-a1 §4. Không gọi model, không đo gate ở bước này.
+- `ase join skill-gap --store FILE --catalog FILE --bundle DIR --local-map FILE` đối chiếu assertion đã xác minh với catalog do người dùng đưa ra, so khớp chính xác `(kind, key/alias)`, phân biệt `match`/`no_match`/`ambiguous`/`insufficient_input` và tôn trọng `completeness[kind]`. Không khớp catalog không phải bằng chứng skill không tồn tại hoặc nên tạo; truy vết giữ `evidence_refs`/span không lộ đường dẫn nguồn. Xem `artifacts/sprint-7/ASE-S7-T5/README.md` và contract-a1 §5. Không ghi store, không gọi model, không đo gate.
 
 ## 12. Ranh giới LLM
 

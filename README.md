@@ -1,24 +1,36 @@
-# agents-session-explorer — P0a addresses, P0b derived search
+# agents-session-explorer — session source index and evidence tools
 
-P0a is a standalone, address-only source index for OMP/Codex session files. It
-answers *where* an observation came from. P0b adds a generation-pinned,
-contentless full-text and shingle layer for allowlisted prose and tool-call
-signatures. P0c resolves task identity from file-name grammar, `parentSession`
-delegation and `task_id` prose markers with inspectable evidence. No P0/P1/P2
-layer calls a model; the P3 `judge` layer is the only model caller and runs
-offline only (a workspace-local process or an explicitly configured typed API
-profile), never on a query path. A request that carries session text to a
+The address layer is a standalone, address-only source index for OMP/Codex
+session files. It answers *where* an observation came from. The derived search
+layer adds a generation-pinned, contentless full-text and shingle layer for
+allowlisted prose and tool-call signatures. Task resolution reconciles file-name
+grammar, `parentSession` delegation and `task_id` prose markers with inspectable
+evidence. No query layer calls a model; the `judge` layer is the only model
+caller and runs offline only (a workspace-local process or an explicitly
+configured typed API profile), never on a query path. A request that carries session text to a
 non-loopback endpoint requires an explicit run opt-in; `ase llm smoke` is the
 fixed synthetic wire check and sends no session data. `ase llm` stores the
 non-secret API profile and the user-scoped API key used by that transport.
 
+**Publication state:** the latest published release tag is
+[`v0.4.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.4.0),
+a source prerelease from before the judge and evidence-bundle commands. Public
+source commit
+[`7c6000ba8bf9`](https://github.com/triet4p/agents-session-explorer/commit/7c6000ba8bf964ba2b454a0888ebb7de3b36ebed)
+adds the judge and evidence-bundle implementation and runnable synthetic
+fixtures under `fixtures/p4/`; it is a source publish, not a release, and its
+status text predates later local measurements. Those measurement records are
+workspace-local evidence and are not published release assets. This checkout
+does not contain the public `fixtures/p4/` tree; the commands below generate
+equivalent synthetic inputs under `.tmp/`.
+
 ## Design documentation
 
 - [Use cases and requirements](docs/USE_CASE.md) — user workflows and acceptance criteria.
-- [Scope](docs/SCOPE.md) — supported behavior, non-goals, and phase boundaries.
+- [Scope](docs/SCOPE.md) — supported behavior, non-goals, and layer boundaries.
 - [Static architecture](docs/STATIC_ARCHITECTURE.md) — current components and proposed changes.
 - [Data contracts](docs/DATA_CONTRACTS.md) — provenance, source coordinates, and derived data.
-- [P0b verification](artifacts/P0b/summary.md) — fixture proofs, release measurements and limits.
+- [Derived search verification](artifacts/P0b/summary.md) — fixture proofs, release measurements and limits.
 - [Initialization record](docs/INITIALIZATION.md) — original design and corpus observations.
 
 ## Build
@@ -77,7 +89,7 @@ are rebuilt with `--layer postings` (or `--layer all`).
 
 Limitations: tracked new OMP sessions only; untracked sessions stay
 unresolved. The frozen holdout had zero assignable members (disclosed, not
-replaced by synthetic fixtures); no historic or P0d claim is made.
+replaced by synthetic fixtures); no historic or motif-detection claim is made.
 
 ## Run
 
@@ -102,35 +114,35 @@ ase resolve session:<ID> --index ase.index --explain
 ase resolve span:<FILE>:<OFF>:<LEN> --index ase.index --explain
 ase resolve task:<TOKEN> --index ase.index --json --explain   # evidence-backed assignment
 
-# P0c-2 naming grammar: synthetic fixture, metadata-only audit
+# Naming grammar: synthetic fixture, metadata-only audit
 ase fixture-naming --out .tmp/naming
 ase index --omp-root .tmp/naming/omp --codex-root .tmp/naming/codex --index .tmp/naming/ase.index
 ase audit naming --index .tmp/naming/ase.index --json --explain
 
-# P0c-3 parentSession delegation: synthetic fixture, metadata-only audit
+# parentSession delegation: synthetic fixture, metadata-only audit
 ase fixture-delegation --out .tmp/delegation
 ase index --omp-root .tmp/delegation/omp --codex-root .tmp/delegation/codex --index .tmp/delegation/ase.index
 ase audit delegation --index .tmp/delegation/ase.index --json --explain
 
-# P0c-4 task_id markers: synthetic fixture, metadata-only audit
+# task_id markers: synthetic fixture, metadata-only audit
 ase fixture-markers --out .tmp/markers
 ase index --layer all --omp-root .tmp/markers/omp --codex-root .tmp/markers/codex --index .tmp/markers/ase.index
 ase audit markers --index .tmp/markers/ase.index --json --explain
 ase open --event N --selector S --generation G --index .tmp/markers/ase.index --content
 
-# P0c-5 task identity reconciliation: synthetic fixture, metadata-only resolve
+# Task identity reconciliation: synthetic fixture, metadata-only resolve
 ase fixture-resolve --out .tmp/resolve
 ase index --layer all --omp-root .tmp/resolve/omp --codex-root .tmp/resolve/codex --index .tmp/resolve/ase.index
 ase resolve task:101 --index .tmp/resolve/ase.index --json --explain
 
-# P0c-9 native dispatch provenance: synthetic producer-shaped fixture
+# Native dispatch provenance: synthetic producer-shaped fixture
 ase fixture-dispatch --out .tmp/dispatch
 ase index --layer all --omp-root .tmp/dispatch/omp --codex-root .tmp/dispatch/codex --index .tmp/dispatch/ase.index
 ase resolve task:410 --index .tmp/dispatch/ase.index --json --explain
 ase resolve task:10410 --index .tmp/dispatch/ase.index --json --explain
 ase show span:<FILE>:<OFF>:<LEN> --index .tmp/dispatch/ase.index --json --explain
 
-# P0d-2 motif alignment and support: synthetic fixture, occurrence reopen
+# Motif alignment and support: synthetic fixture, occurrence reopen
 ase fixture-motif --out .tmp/motif
 ase index --layer all --omp-root .tmp/motif/omp --codex-root .tmp/motif/codex --index .tmp/motif/ase.index
 ase motif 1 2 3 9 --index .tmp/motif/ase.index --tau 0 --json --explain
@@ -143,7 +155,7 @@ ase adapter omp-stock --all --index .tmp/adapter/ase.index --out .tmp/adapter/cl
 ase adapter omp-stock --session <ID> --index ase.index --json
 ase adapter omp-stock --reopen .tmp/adapter/claims.json --index .tmp/adapter/ase.index --json
 
-# P1 Turn/Episode projection: active leaf by default, explicit older leaf on request
+# Turn/Episode projection: active leaf by default, explicit older leaf on request
 ase index --omp-root .tmp/work/omp --codex-root .tmp/work/codex --index .tmp/work/ase.index
 ase work project --omp-root .tmp/work/omp --start 2026-09-01T00:00:00Z \
   --end 2026-10-01T00:00:00Z --index .tmp/work/ase.index \
@@ -160,14 +172,14 @@ ase work compare --projection .tmp/work/rows.jsonl \
 # Explicit before/after attempt delta for one dispatch-confirmed task
 ase fixture-delta --out .tmp/delta
 ase index --omp-root .tmp/delta/omp --codex-root .tmp/delta/codex --index .tmp/delta/ase.index
-ase work delta --task T701 --project S31 --before s4t3-before --after s4t3-after \
+ase work delta --task T701 --project Proj31 --before delta-before --after delta-after \
   --omp-root .tmp/delta/omp --index .tmp/delta/ase.index \
   --out .tmp/delta/delta.json --before-out .tmp/delta/before.json \
   --after-out .tmp/delta/after.json --json
 ase work reopen .tmp/delta/before.json --index .tmp/delta/ase.index --json
 ase work reopen .tmp/delta/after.json --index .tmp/delta/ase.index --json
 
-# P2 runtime analytics: nominal stored cost, duration vs clock union, coverage
+# Runtime analytics: nominal stored cost, duration vs clock union, coverage
 ase fixture-analytics --out .tmp/analytics
 ase index --omp-root .tmp/analytics/omp --codex-root .tmp/analytics/codex \
   --index .tmp/analytics/ase.index
@@ -185,21 +197,27 @@ ase verify --all --index ase.index --json
 ase bench-show --n 2000 --seed 1 --index ase.index --json
 ```
 
-Defaults: `--index ase.index`; OMP root `C:/Users/admin/.omp/agent/sessions`;
-Codex root `C:/Users/admin/.codex/sessions`.
+Defaults: `--index ase.index`; OMP root from `ASE_OMP_ROOT`, else
+`$HOME/.omp/agent/sessions` (`%USERPROFILE%` on Windows); Codex root from
+`ASE_CODEX_ROOT`, else `$HOME/.codex/sessions`. An explicit `--omp-root` or
+`--codex-root` always wins; no build-host path is compiled in.
 
-`ase verify <bundle-dir>` reopens a P4 evidence bundle from a private local
+`ase verify <bundle-dir>` reopens an evidence bundle from a private local
 source map. It is distinct from the span-level `verify --all` above, whose
 flags and output are unchanged.
 
 ```bash
-ase verify fixtures/p4/bundle-positive-a1 \
-  --local-map fixtures/p4/local-map-positive-a1.json \
-  --verdicts fixtures/p4/verdicts-positive-a1.json --json
+ase verify fixtures/bundle \
+  --local-map fixtures/bundle/local-map.json \
+  --verdicts fixtures/bundle/verdicts.json --json
 ```
 
+The same synthetic tree is documented in `fixtures/bundle/README.md`. It uses
+the current `ase-bundle-v1` schema. The older public `fixtures/p4/` tree is not
+present in this checkout.
+
 The `--local-map` JSON is never part of the bundle. It carries
-`schema: ase-p4-local-sources-v1`, a pinned `snapshot` (`snapshot_id`,
+`schema: ase-local-sources-v1`, a pinned `snapshot` (`snapshot_id`,
 `core_digest`, per-file `sha256`/`size`), and `aliases` mapping each opaque
 `src-<16 hex>` to a file id, file digest and local path. Relative paths are
 resolved next to the map file. Without a supplied map, an unknown alias, an
@@ -210,7 +228,7 @@ Selectors use `block-v1|span:<byte-offset>:<byte-length>|message.content[<index>
 The block type is `toolCall` for a call and the type of the reopened result
 block (`toolResult` or native OMP `text`). Verification reads those exact bytes
 again, re-runs the selector, checks the strong SHA-256 of the reopened block,
-resolves the paired result by `toolCallId`/`id`, re-applies `ase-p4-redact-v1`,
+resolves the paired result by `toolCallId`/`id`, re-applies `ase-redact-v1`,
 and recomputes the excerpt and input identities. The displayed signature is
 UTF-8-safe capped at 160 bytes; an optional `result_lines` field records how
 many of the first three redacted lines fit the 512-byte call cap so the exact
@@ -223,11 +241,11 @@ versions and the snapshot pin are checked first. The JSON report separates
 If the whole source file digest differs but every reopened span still checks
 out, rows are accepted as `verified_span_after_append` with a separate
 watermark note. That means only the cited spans were rechecked; it makes no
-claim that the current file is complete or that a P4 gate was measured. The
+claim that the current file is complete or that a gate was measured. The
 optional `--verdicts FILE` is a read-only cross-check against the bundle;
 nothing is imported or written, and no model or network call is made.
 
-`ase export motif:<id> --out DIR --local-map FILE` writes a shareable P4 bundle
+`ase export motif:<id> --out DIR --local-map FILE` writes a shareable evidence bundle
 from the pinned motif query. Addresses come from repeated `--address
 PROJECT|TASK` or from a private local `--addresses FILE`; the query config,
 representative policy, redaction policy and citation limits are fixed by the
@@ -253,7 +271,7 @@ and drops trailing fill/divergent/failure representatives if the 32 KiB bundle
 cap is reached. A private staging copy is reopened and verified first; a digest,
 span, selector, view, redaction or leak mismatch refuses publication and leaves
 the output directory untouched. Export reports evidence counts only for that
-prepublication check; it does not measure a P4 gate.
+prepublication check; it does not measure a gate.
 
 `ase import verdicts FILE --bundle DIR --local-map FILE --store FILE` imports
 externally written judgments into a separate local assertion layer. The bundle
@@ -262,16 +280,16 @@ before any write; the verdict file is never a source-evidence substitute and
 the tool never writes or infers a judgment.
 
 ```bash
-ase import verdicts fixtures/p4/verdicts-positive-a1.json \
-  --bundle fixtures/p4/bundle-positive-a1 \
-  --local-map fixtures/p4/local-map-positive-a1.json \
-  --store .tmp/p4/assertions.json --json
-ase verify fixtures/p4/bundle-positive-a1 \
-  --local-map fixtures/p4/local-map-positive-a1.json \
-  --verdicts fixtures/p4/verdicts-positive-a1.json --json
+ase import verdicts fixtures/bundle/verdicts.json \
+  --bundle fixtures/bundle \
+  --local-map fixtures/bundle/local-map.json \
+  --store .tmp/bundle-store.json --json
+ase verify fixtures/bundle \
+  --local-map fixtures/bundle/local-map.json \
+  --verdicts fixtures/bundle/verdicts.json --json
 ```
 
-The `--store FILE` is a local `ase-p4-assertions-v1` JSON layer, never part of
+The `--store FILE` is a local `ase-assertions-v1` JSON layer, never part of
 the bundle. Each accepted row keeps its `assertion_id`, bundle id/digest,
 motif/occurrence/question ids, judgment fields, sorted evidence references,
 input identity, path-free evidence span references, the digest of the verdict
@@ -285,8 +303,8 @@ and catalog key/kind grammar. A content-identical replay is
 `duplicate_ignored`; an id reused with another body is `assertion_id_conflict`.
 Rejected rows are never stored; all rows that pass are inserted together in one
 atomic replace, and when no row passes the store is left byte-identical. The
-command exits nonzero if any row was rejected. No model, catalog join or P4
-gate measurement is performed here.
+command exits nonzero if any row was rejected. No model, catalog join or gate
+measurement is performed here.
 
 `ase join skill-gap --store FILE --catalog FILE --bundle DIR --local-map FILE`
 compares only verified persisted assertions with a user-supplied
@@ -299,10 +317,10 @@ exact byte equality on `(catalog_kind, key or alias)`: `match`, `no_match`,
 evidence that a skill is absent or should be created.
 
 ```bash
-ase join skill-gap --store .tmp/p4/assertions.json \
-  --catalog fixtures/p4/catalog-positive-a1.json \
-  --bundle fixtures/p4/bundle-positive-a1 \
-  --local-map fixtures/p4/local-map-positive-a1.json --json
+ase join skill-gap --store .tmp/bundle-store.json \
+  --catalog fixtures/bundle/catalog.json \
+  --bundle fixtures/bundle \
+  --local-map fixtures/bundle/local-map.json --json
 ```
 
 Each row carries `assertion_id`, `occurrence_id`, sorted `evidence_refs`,
@@ -313,10 +331,21 @@ recheck each assertion's verdict digest and judged content against the original
 verdict file as well. This command is read-only: it never writes the assertion
 store, bundle or catalog, never calls a model, and reports no gate result.
 
+**Pilot gate evidence.** On the pinned two-motif OMP pilot,
+`export → verify → import verdicts → join skill-gap` ran locally with
+user-supplied verdicts and no LLM invocation: 4/4 frozen candidates had
+verified evidence (100%, against a ≥80% target requiring 4/4), 19/19
+bundle evidence rows and 4/4 accepted assertions reopened, and the join
+reported 4/4 `match`. A tampered bundle was rejected outside the positive
+rates. These numbers apply only to that pilot and its frozen denominator;
+they are not a quality result, a catalog-wide claim or a gate measurement
+for other corpora. The measurement records are workspace-local, not part of
+the published source or a release asset.
+
 
 `ase work project` derives `Turn`/`Episode` rows under rule
-`omp-turn-episode` / `turn-episode-v1`, compatible with the locked Sprint-4
-reference rule `s4t1-turn-v1`. A turn is one assistant `message` entry with a
+`omp-turn-episode` / `turn-episode-v1`, compatible with the released
+reference identifier `s4t1-turn-v1` (isolated as `COMPATIBLE_REFERENCE_RULE`). A turn is one assistant `message` entry with a
 `message.usage` object; the active leaf is the graph leaf with the greatest
 `(entry timestamp, ordinal)` and the active path walks `parentId` to the root.
 Episodes are runs of turns between user boundaries; the primary boundary is a
@@ -359,7 +388,7 @@ projections that `ase work reopen` can verify independently. A mismatch is
 `evidence_unverified`, never a silent re-projection.
 
 `ase analytics` (rule `runtime-analytics` / `runtime-analytics-v1`) consumes
-the same P1 projection and reports per-turn stored facts beside it: nominal
+the same Turn/Episode projection and reports per-turn stored facts beside it: nominal
 `message.usage.cost.total` (catalog USD, never repriced, no `stats.db` read),
 `message.duration`, `message.ttft`, and the half-open
 `[message.timestamp, message.completedAt)` clock interval. Cost and duration
@@ -379,7 +408,7 @@ Project provenance comes only from the `<project>/<name>.jsonl` tree layout;
 unattributed sessions land in an explicit `<unknown-project>` group, never
 under a model or adapter candidate. Buckets are keyed by `(model, project)` and
 report active-leaf, all-branch and abandoned statistics separately, with a
-reconciliation that must agree with the P1 turn counts. `ase analytics reopen`
+reconciliation that must agree with the turn counts. `ase analytics reopen`
 re-checks generation, span, checksum, selector and the runtime facts themselves
 against raw bytes. `ase work project` keeps its separate header-time selection
 contract and is unaffected by analytics window scoping.
@@ -388,12 +417,12 @@ contract and is unaffected by analytics window scoping.
 `.zstd` file) for reproducible behavioral checks. No real transcript text is
 written to fixtures or artifacts.
 
-## P3 offline evaluation (`ase judge`)
+## Offline evaluation (`ase judge`)
 
-`ase judge` runs the P3 evaluation over a pinned, reopenable projection: one
+`ase judge` runs the evaluation over a pinned, reopenable projection: one
 unit is one journal session projected at its active graph leaf, and one
 decision is an adjacent pair of human user messages on that path. The input
-pin is the Sprint-6 cohort manifest plus its path-free units file and private
+pin is the pinned cohort manifest plus its path-free units file and private
 path map; the run re-reads every selected journal, checks the pinned size and
 SHA-256, and refuses to continue if the active leaf, human-message count or
 product user count differs from the pin.
@@ -508,14 +537,26 @@ with a loopback synthetic check of all five protocols: auth header location,
 exact body shape, effort omission, typed parse, redacted failures,
 cold/warm cache and zero-call query paths (90/90 checks, no provider request).
 The full-cohort SLM/Judge run remains unmeasured pending T3, no live provider
-call is part of the T5 candidate, and no P3 gate is claimed. The evaluation
+call is part of the T5 candidate, and no judge gate is claimed. The evaluation
 does not read session recaps, and `unknown` is never merged into either
 positive label.
+
+**Local measurement update (supersedes the earlier unmeasured-status sentence):**
+the cache/zero-call gate was measured in a workspace-local experiment on all
+1,400 pinned decisions: both model stages ran
+cold with a temporary pre-send `redact-v1` policy and a fail-closed payload
+allowlist, the unchanged replay made 0 outbound calls with an identical
+assertion digest, and `verify` reopened 4,200/4,200 anchors. The experiment
+patch was reverted; the shipped CLI has no judge redaction option and keeps
+policy `none`. The 26-decision ablation is descriptive against frozen hand
+labels with no quality threshold, so no cohort quality verdict or
+historical-recap equivalence follows. Public source publishes the judge and
+evidence-bundle code and synthetic fixtures, not these measurement records.
 
 ## LLM API configuration (`ase llm`)
 
 `ase llm` is the configuration/credential/transport boundary for the optional
-P3 Judge API backends. It decides which full request endpoint, typed API,
+Judge API backends. It decides which full request endpoint, typed API,
 model, effort and credential one call uses, and implements exactly one typed
 request for that protocol. Every command except `ase llm smoke` is local and
 opens no socket. `smoke` sends one fixed synthetic rubric pair and never sends
@@ -715,7 +756,9 @@ effort presence/omission, typed parse and confidence semantic, error/body
 redaction, redirect refusal without following, no retry, cold/warm cache per
 protocol, cache namespace separation on a shared store, zero-call
 `report`/`show`/`verify` paths, and refusal of a non-loopback profile without
-opt-in. It made no provider request and used no real key.
+opt-in. It made no provider request and used no real key. The script and
+machine-readable result are
+`artifacts/sprint-6/ASE-S6-T5/smoke_t5.py` and `evidence-smoke-a1.json`.
 
 ## Source coordinates
 
@@ -726,7 +769,7 @@ opt-in. It made no provider request and used no real key.
 `show` reports encoding, coordinate system, freshness, and the stored checksum.
 With `--explain` or `--content`, it rereads the span and checks that checksum.
 
-`resolve task:<TOKEN>` reconciles the P0c signals under rule
+`resolve task:<TOKEN>` reconciles the derived task signals under rule
 `task-identity-reconciliation` / `task-resolve-v2`. A project-scoped key comes
 from a parsed `file-name-grammar` / `naming-v1` candidate or from one unique,
 consistent native dispatch join under `task-dispatch-provenance` /
@@ -827,7 +870,7 @@ multi-task cases without real transcript content.
 
 ## Search layer
 
-`ase index` defaults to `--layer address` to preserve P0a behavior. Use
+`ase index` defaults to `--layer address` to preserve the original address-only behavior. Use
 `--layer postings` to add postings to an existing address, or `--layer all` to
 derive both layers from one decode pass. Each successful publication writes an
 immutable generation directory and replaces one sidecar pointer
