@@ -1,0 +1,180 @@
+{
+  "denominator": {
+    "sequences_deduplicated": 0,
+    "sequences_in_family": 2,
+    "sequences_with_occurrence": 2,
+    "tasks_in_family": 2,
+    "tasks_total": 2,
+    "tasks_with_occurrence": 2
+  },
+  "family_id": "fam-fixture00000001",
+  "motif_id": "mot-fixture00000001",
+  "occurrences_total": 2,
+  "questions": [
+    {
+      "question_id": "Q1",
+      "text": "Is this sequence a fixed ritual or a variable procedure?"
+    },
+    {
+      "question_id": "Q2",
+      "text": "Which calls are essential and which are incidental?"
+    },
+    {
+      "question_id": "Q3",
+      "text": "Should this repetition be codified as a skill or template under the supplied catalog?"
+    }
+  ],
+  "reference": {
+    "occurrence_id": "occ-fixture00000001",
+    "selection": "earliest"
+  },
+  "representative_policy": "ase-p4-representatives-v1",
+  "representatives": [
+    {
+      "call_count": 3,
+      "evidence": [
+        {
+          "call": {
+            "block_sha256": "sha256:4b10e0578aa882dbae8d30280f27e5b7162c71c2131f6c1f653b462a901e72d8",
+            "file_id": 0,
+            "selector": "block-v1|span:0:193|message.content[0]|toolCall",
+            "signature": "read|path=P",
+            "tool": "read"
+          },
+          "call_ordinal": 0,
+          "evidence_id": "ev-b79e408b2beae065",
+          "excerpt": "call[0] tool=read sig=read|path=P\nresult: open «url» then «path»",
+          "excerpt_sha256": "sha256:b793e862b1f8df5c9b37c91c6f58b3ca9d4d8d79ba878bca53bea6669f392afa",
+          "result": {
+            "block_sha256": "sha256:064f8cb159bee085001353ee686d8c342165b2570e8956af5894d22d0471d315",
+            "selector": "block-v1|span:194:217|message.content[0]|toolResult",
+            "status": "present"
+          }
+        },
+        {
+          "call": {
+            "block_sha256": "sha256:a9d79ebbbcc56ac8703c1eb184cf971487492e0133b148a3a0a920680a2ee23b",
+            "file_id": 0,
+            "selector": "block-v1|span:412:192|message.content[0]|toolCall",
+            "signature": "read|path=P",
+            "tool": "read"
+          },
+          "call_ordinal": 1,
+          "evidence_id": "ev-62c7d5edc6aa5624",
+          "excerpt": "call[1] tool=read sig=read|path=P\nresult: one «path»\n        two «email»\n        three «secret»",
+          "excerpt_sha256": "sha256:cdd945558ef9a9956237d21a00b61dc35f513d8970e05f0fc35099a0ac858fc3",
+          "result": {
+            "block_sha256": "sha256:e8f186482dbe70613c111acf572f6e305f5939bc2bf11ca874e0c82ff0f6375a",
+            "selector": "block-v1|span:605:263|message.content[0]|toolResult",
+            "status": "present"
+          }
+        },
+        {
+          "call": {
+            "block_sha256": "sha256:fda760d614b187150773098e8e7aba35914cd02bba2304b68ff43e40c486868e",
+            "file_id": 0,
+            "selector": "block-v1|span:869:193|message.content[0]|toolCall",
+            "signature": "read|path=P",
+            "tool": "read"
+          },
+          "call_ordinal": 2,
+          "evidence_id": "ev-31d080abc9b56fe8",
+          "excerpt": "call[2] tool=read sig=read|path=P\nresult: blob «token» end",
+          "excerpt_sha256": "sha256:b2ade36c2d09694abe3a3c43b3e5cd55622d1732aea500a00b6441e88237f2e6",
+          "result": {
+            "block_sha256": "sha256:d22b835292757cb62c81d6c70c673d4bf04998ecc87721dc2f4f9716af124201",
+            "selector": "block-v1|span:1063:216|message.content[0]|toolResult",
+            "status": "present"
+          }
+        }
+      ],
+      "input_identity": "6fbd1486b2fd2abd0703aa58d8b5a7b0ae903450a573cb4382feb9dedd243e7d",
+      "occurrence_id": "occ-fixture00000001",
+      "result_status": "present",
+      "selection": "earliest",
+      "source_alias": "src-fixture00000001"
+    },
+    {
+      "call_count": 3,
+      "evidence": [
+        {
+          "call": {
+            "block_sha256": "sha256:a4f54d3a39c8f480fda49f9425c5eb4b00fef236da671a2526dae5a3e87db862",
+            "file_id": 0,
+            "selector": "block-v1|span:1280:193|message.content[0]|toolCall",
+            "signature": "read|path=P",
+            "tool": "read"
+          },
+          "call_ordinal": 0,
+          "evidence_id": "ev-65adf7a8f869e5f1",
+          "excerpt": "call[0] tool=read sig=read|path=P\nresult: delta «path»",
+          "excerpt_sha256": "sha256:29b2eed99582729c98853183cfb28a0c4b0e2eaa1870fcef9d1ad0dc0b36c1a0",
+          "result": {
+            "block_sha256": "sha256:0102256383f046943fe636bb7ee409c772276baab8abfaab0f55677be0ac1f02",
+            "selector": "block-v1|span:1474:179|message.content[0]|toolResult",
+            "status": "present"
+          }
+        },
+        {
+          "call": {
+            "block_sha256": "sha256:826fe6a5a5ced83d024145e13d7fcac6b62f0c7c7bb231a13d7ad2b658b87ec6",
+            "file_id": 0,
+            "selector": "block-v1|span:1654:195|message.content[0]|toolCall",
+            "signature": "read|path=P",
+            "tool": "read"
+          },
+          "call_ordinal": 1,
+          "evidence_id": "ev-2fdde49db8a53dec",
+          "excerpt": "call[1] tool=read sig=read|path=P\nresult: epsilon ok",
+          "excerpt_sha256": "sha256:24cf1bde39a87c7495e59fbeb98cc56531dabc693697d1e3d9fbe640d8c9167f",
+          "result": {
+            "block_sha256": "sha256:2ee9a51570123e781b951b3501e2c8dab5532840046ab2f650654809c281b926",
+            "selector": "block-v1|span:1850:169|message.content[0]|toolResult",
+            "status": "present"
+          }
+        },
+        {
+          "call": {
+            "block_sha256": "sha256:c3d17a66dd8674d6a8ebb1cf2d4f285bc670a785c18421c24622b5452b650a2c",
+            "file_id": 0,
+            "selector": "block-v1|span:2020:193|message.content[0]|toolCall",
+            "signature": "read|path=P",
+            "tool": "read"
+          },
+          "call_ordinal": 2,
+          "evidence_id": "ev-0f25b493e95f0f42",
+          "excerpt": "call[2] tool=read sig=read|path=P\nresult: zeta ok",
+          "excerpt_sha256": "sha256:b2cb242c16d891b5b7f7ac4ff2aba6c5c00a7cda8c6c5d4393a5a8f2311a22dc",
+          "result": {
+            "block_sha256": "sha256:4f9890165cb6669bc8182c290db64453699025611bc0fbf778141725c6921e09",
+            "selector": "block-v1|span:2214:167|message.content[0]|toolResult",
+            "status": "present"
+          }
+        }
+      ],
+      "input_identity": "f40c1a414924e754bc45459045ebd098df58cab4e86e14ca9461a7c4760c77c2",
+      "occurrence_id": "occ-fixture00000002",
+      "result_status": "present",
+      "selection": "latest",
+      "source_alias": "src-fixture00000001"
+    }
+  ],
+  "representatives_selected": 2,
+  "representatives_shortfall": true,
+  "schema": "ase-p4-motif-v1",
+  "signatures": [
+    "read|path=P",
+    "read|path=P",
+    "read|path=P"
+  ],
+  "support": {
+    "exact": 2,
+    "gap_max": 2,
+    "relaxed": [
+      2,
+      2,
+      2
+    ]
+  },
+  "synthetic": true
+}

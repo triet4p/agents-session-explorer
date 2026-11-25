@@ -1,0 +1,12 @@
+{"message":{"content":[{"arguments":{"path":"/fixture/alpha.txt"},"toolCallId":"call-0","toolName":"read","type":"toolCall"}],"role":"assistant"},"ordinal":0,"timestamp":"2026-11-25T00:00:00Z"}
+{"message":{"content":[{"status":"present","text":"open https://example.invalid/a then C:\\fixture\\alpha.txt","toolCallId":"call-0","type":"toolResult"}],"role":"tool"},"ordinal":1,"timestamp":"2026-11-25T00:00:01Z"}
+{"message":{"content":[{"arguments":{"path":"/fixture/beta.txt"},"toolCallId":"call-1","toolName":"read","type":"toolCall"}],"role":"assistant"},"ordinal":2,"timestamp":"2026-11-25T00:00:02Z"}
+{"message":{"content":[{"status":"present","text":"one /home/fixture/a\ntwo ops@fixture.invalid\nthree sk-fixturetoken123456789\nfour must-not-be-published","toolCallId":"call-1","type":"toolResult"}],"role":"tool"},"ordinal":3,"timestamp":"2026-11-25T00:00:03Z"}
+{"message":{"content":[{"arguments":{"path":"/fixture/gamma.txt"},"toolCallId":"call-2","toolName":"read","type":"toolCall"}],"role":"assistant"},"ordinal":4,"timestamp":"2026-11-25T00:00:04Z"}
+{"message":{"content":[{"status":"present","text":"blob AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA end","toolCallId":"call-2","type":"toolResult"}],"role":"tool"},"ordinal":5,"timestamp":"2026-11-25T00:00:05Z"}
+{"message":{"content":[{"arguments":{"path":"/fixture/delta.txt"},"toolCallId":"call-3","toolName":"read","type":"toolCall"}],"role":"assistant"},"ordinal":6,"timestamp":"2026-11-25T00:00:06Z"}
+{"message":{"content":[{"status":"present","text":"delta /tmp/fixture/d","toolCallId":"call-3","type":"toolResult"}],"role":"tool"},"ordinal":7,"timestamp":"2026-11-25T00:00:07Z"}
+{"message":{"content":[{"arguments":{"path":"/fixture/epsilon.txt"},"toolCallId":"call-4","toolName":"read","type":"toolCall"}],"role":"assistant"},"ordinal":8,"timestamp":"2026-11-25T00:00:08Z"}
+{"message":{"content":[{"status":"present","text":"epsilon ok","toolCallId":"call-4","type":"toolResult"}],"role":"tool"},"ordinal":9,"timestamp":"2026-11-25T00:00:09Z"}
+{"message":{"content":[{"arguments":{"path":"/fixture/zeta.txt"},"toolCallId":"call-5","toolName":"read","type":"toolCall"}],"role":"assistant"},"ordinal":10,"timestamp":"2026-11-25T00:00:10Z"}
+{"message":{"content":[{"status":"present","text":"zeta ok","toolCallId":"call-5","type":"toolResult"}],"role":"tool"},"ordinal":11,"timestamp":"2026-11-25T00:00:11Z"}

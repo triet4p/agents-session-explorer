@@ -1,0 +1,27 @@
+{
+  "catalog_id": "cat-fixture00000001",
+  "completeness": {
+    "skill": true,
+    "template": true
+  },
+  "entries": [
+    {
+      "aliases": [],
+      "entry_id": "sk-fixture-01",
+      "key": "procedure:read-inspect",
+      "kind": "skill",
+      "title": "Read-inspect procedure"
+    },
+    {
+      "aliases": [
+        "json-order"
+      ],
+      "entry_id": "tpl-fixture-01",
+      "key": "ritual:json-order-check",
+      "kind": "template",
+      "title": "JSON order check"
+    }
+  ],
+  "schema": "ase-skill-catalog-v1",
+  "synthetic": true
+}

@@ -19,6 +19,9 @@ ase-task = { path = "../ase-task" }
 ase-motif = { path = "../ase-motif" }
 ase-adapter-omp-stock = { path = "../ase-adapter-omp-stock" }
 ase-work = { path = "../ase-work" }
+ase-judge = { path = "../ase-judge" }
+ase-llm = { path = "../ase-llm" }
+regex = "1"
 rayon = "1"
 serde = "1"
 serde_json = { version = "1", features = ["raw_value"] }

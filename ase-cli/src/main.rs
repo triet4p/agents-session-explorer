@@ -16,6 +16,8 @@
 //! P0d-2 adds `motif` (bounded alignment, task-deduplicated support, recorded
 //! denominator/exclusions, fixed-seed null model and per-occurrence evidence)
 //! and `fixture-motif` synthetic fixtures.
+//! P4 bundle verification reopens evidence against a private local source map;
+//! `verify --all` remains the unchanged P0a span check.
 
 use ase_core::{err, EventIdx, ProjectionKind, RawStore, Result, Role, SpanRef, NONE};
 use ase_work::{
@@ -41,12 +43,17 @@ use ase_motif::membership::dispatch_input;
 use ase_adapter_omp_stock::{
     path_eq, reopen, scan, ClaimsFile, Options as AdapterOptions, StockView, ViewEvent, ViewFile,
 };
+use ase_judge::Scope;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::fs;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+mod p4_verify;
+mod p4_export;
+mod p4_import;
+mod p4_join;
 
 const DEFAULT_INDEX: &str = "ase.index";
 const DEFAULT_OMP: &str = "C:/Users/admin/.omp/agent/sessions";
@@ -79,9 +86,14 @@ fn main() {
         "fixture-dispatch" => cmd_fixture_dispatch(rest),
         "fixture-delta" => cmd_fixture_delta(rest),
         "motif" => cmd_motif(rest),
+        "export" => p4_export::run(rest),
+        "import" => p4_import::run(rest),
+        "join" => p4_join::run(rest),
         "adapter" => cmd_adapter(rest),
         "work" => cmd_work(rest),
         "analytics" => cmd_analytics(rest),
+        "judge" => cmd_judge(rest),
+        "llm" => cmd_llm(rest),
         "fixture-analytics" => cmd_fixture_analytics(rest),
         "fixture-adapter" => cmd_fixture_adapter(rest),
         "fixture-motif" => cmd_fixture_motif(rest),
@@ -101,6 +113,7 @@ fn usage() {
          ase show    <span:F:L:LEN|session:ID> [--role ROLE] [--ordinal A:B] [--explain] [--content] [--json]\n\
          ase resolve <session:ID|span:F:L:LEN|task:TOKEN> [--explain] [--json]\n\
          ase verify  [--all | --sample N] [--index FILE] [--json]\n\
+         ase verify  <BUNDLE-DIR> [--local-map FILE] [--verdicts FILE] [--json]\n\
          ase bench-show [--n N] [--seed N] [--index FILE] [--json]\n\
          ase search  <QUERY> [--phrase] [--top-k N] [--explain] [--json]\n\
          ase open    --event N --selector S --generation G [--content] [--json]\n\
@@ -121,6 +134,14 @@ fn usage() {
                      [--null-permutations N] [--min-tasks N] [--explain] [--json]\n\
                      (PROJECT|TASK addresses one exact sampling key; a bare\n\
                      TOKEN stays ambiguous when two projects share it)\n\
+         ase export motif:<id> --out DIR --local-map FILE\n\
+                     (--address PROJECT|TASK ... | --addresses FILE)\n\
+                     [--index FILE] [--omp-root DIR] [--codex-root DIR] [--json]\n\
+                     (writes only path-free bundle files; the private alias map stays outside)\n\
+         ase import verdicts FILE --bundle DIR --local-map FILE --store FILE [--json]\
+                     (reopens the bundle first; accepted assertions stay in the local store)\
+         ase join skill-gap --store FILE --catalog FILE --bundle DIR --local-map FILE [--verdicts FILE] [--json]\
+                     (read-only exact-catalog join of verified assertions; no store write)\
          ase adapter omp-stock (--session ID | --file N | --all) [--limit N]\n\
                      [--no-sidecars] [--out CLAIMS.json] [--explain] [--json]\n\
          ase adapter omp-stock --reopen CLAIMS.json [--claim ID] [--json]\n\
@@ -148,6 +169,38 @@ fn usage() {
          ase fixture-adapter --out DIR\n\
                      (advisory claims only; resolver and motif membership unchanged)\n\
          ase fixture-motif --out DIR\n\
+         ase judge run --root DIR --manifest FILE --units FILE --private FILE\n\
+                     --store FILE [--scope primary|unknown|all] [--only-ordinal N]...\n\
+                     [--limit N] [--workspace DIR] [--verification-only]\n\
+                     [--slm-runner PROG --slm-arg ARG... --slm-model-id ID\n\
+                      (--slm-model-sha256 HEX | --slm-weights FILE)] [...]\n\
+                     [--slm-profile NAME [--slm-api-timeout-ms N]]\n\
+                     [--judge-runner ... --judge-model-id ID ...]\n\
+                     [--judge-profile NAME [--judge-api-timeout-ms N]]\n\
+                     [--allow-remote-session-data] [--out REPORT.json]\n\
+                     (API profiles come from `ase llm`; remote egress needs opt-in)\n\
+         ase judge verify --root DIR --units FILE --private FILE --store FILE\n\
+                     [--include-verification]   (reopen every stored evidence span)\n\
+         ase judge report --store FILE [--include-verification]\n\
+         ase judge show --store FILE [--unit ID] [--decision N] [--include-verification]\n\
+         ase judge fixture --out DIR   (synthetic contract fixture; no real prose)\n\
+         ase judge contract-runner [--label split|continue|unknown] [--fail]\n\
+                     [--model-id ID] [--model-sha256 HEX]\n\
+                     (local-model protocol double for cache/contract verification)\n\
+         ase llm config [--json] [--profile NAME]\n\
+                     (redacted local status; no network)\n\
+         ase llm config set --profile NAME --provider NAME\n\
+                     [--type chat-completions|responses|decision|gemini|gemini-decision] [--endpoint URL]\n\
+                     [--model MODEL] [--effort minimal|low|medium|high]\n\
+                     [--use] [--json]\n\
+         ase llm config use --profile NAME [--json]\n\
+         ase llm config enroll --profile NAME --provider NAME\n\
+                     [--type ...] [--endpoint URL] [--model MODEL] [--effort ...]\n\
+                     [--use] [--json]\n\
+                     (non-secret settings plus one-time hidden key input)\n\
+         ase llm key set [--profile NAME] [--json]   (hidden prompt; never argv)\n\
+         ase llm key clear [--profile NAME] [--json]\n\
+         ase llm status [--profile NAME] [--json]\n\
          ase fixture-p0b --out DIR"
     );
 }
@@ -1460,12 +1513,15 @@ fn cmd_resolve_task(
 }
 
 fn cmd_verify(args: &[String]) -> Result<()> {
-    let (idx, store) = load(args)?;
+    if let Some(bundle) = positional(args) {
+        return p4_verify::run_bundle(&bundle, args);
+    }
     let all = has(args, "--all");
     let sample: Option<u64> = opt(args, "--sample").and_then(|s| s.parse().ok());
     if !all && sample.is_none() {
         return Err(err("verify needs --all or --sample N"));
     }
+    let (idx, store) = load(args)?;
     let total = idx.event_count as u64;
     let targets: Vec<u64> = if all {
         (0..total).collect()
@@ -1601,7 +1657,7 @@ fn emit(v: &Value, _args: &[String]) {
     println!("{}", serde_json::to_string_pretty(v).unwrap());
 }
 
-fn require_publication(args: &[String]) -> Result<(Arc<Index>, FsRawStore, Publication)> {
+pub(crate) fn require_publication(args: &[String]) -> Result<(Arc<Index>, FsRawStore, Publication)> {
     let (idx, store, published, reason) = load_with_publication(args)?;
     match published {
         Some(p) => Ok((idx, store, p)),
@@ -3048,16 +3104,16 @@ fn parse_opt<T: std::str::FromStr>(args: &[String], name: &str) -> Result<Option
     }
 }
 
-struct MotifTarget {
-    address: String,
-    project: Option<String>,
-    token: String,
+pub(crate) struct MotifTarget {
+    pub(crate) address: String,
+    pub(crate) project: Option<String>,
+    pub(crate) token: String,
 }
 
 /// Parse one motif address. `PROJECT|TASK` is the locked `(project, task)`
 /// sampling key; a bare token keeps the unscoped contract and stays ambiguous
 /// when two projects share it. No fallback rewrites one form into the other.
-fn motif_target(address: &str) -> Result<MotifTarget> {
+pub(crate) fn motif_target(address: &str) -> Result<MotifTarget> {
     match address.split_once('|') {
         Some((project, task)) => {
             if project.is_empty() || task.is_empty() || task.contains('|') {
@@ -5625,5 +5681,896 @@ fn cmd_fixture_analytics(args: &[String]) -> Result<()> {
     write("p-gaps/gaps.jsonl", gaps)?;
 
     println!("wrote 5 synthetic P2 runtime-analytics OMP fixtures to {}", out.display());
+    Ok(())
+}
+
+fn judge_usage() {
+    println!(
+        "ase judge run --root DIR --manifest FILE --units FILE --private FILE\n\
+         \x20           --store FILE [--scope primary|unknown|all] [--only-ordinal N]...\n\
+         \x20           [--limit N] [--workspace DIR] [--verification-only]\n\
+         \x20           [--slm-runner PROG --slm-arg ARG... --slm-model-id ID\n\
+         \x20            (--slm-model-sha256 HEX | --slm-weights FILE)] [...]\n\
+         \x20           [--slm-profile NAME [--slm-api-timeout-ms N]]\n\
+         \x20           [--judge-runner ... --judge-model-id ID ...]\n\
+         \x20           [--judge-profile NAME [--judge-api-timeout-ms N]]\n\
+         \x20           [--allow-remote-session-data] [--out REPORT.json]\n\
+         ase judge verify --root DIR --units FILE --private FILE --store FILE\n\
+         \x20           [--include-verification]\n\
+         ase judge report --store FILE [--include-verification]\n\
+         ase judge show --store FILE [--unit ID] [--decision N] [--include-verification]\n\
+         ase judge fixture --out DIR\n\
+         ase judge contract-runner [--label split|continue|unknown] [--fail]\n\
+         \x20           [--model-id ID] [--model-sha256 HEX]\n\n\
+         No judge command calls a model on a read path. Model stages only run\n\
+         under `judge run`: a workspace-local process (stdin/stdout) or a typed\n\
+         API profile resolved by `ase llm`. A non-loopback API endpoint that\n\
+         would receive session text is refused unless --allow-remote-session-data\n\
+         is passed; the destination is printed. Use `ase llm smoke` for a fixed\n\
+         synthetic call with no session data."
+    );
+}
+
+fn opts(args: &[String], name: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == name {
+            if let Some(value) = args.get(index + 1) {
+                out.push(value.clone());
+                index += 1;
+            }
+        }
+        index += 1;
+    }
+    out
+}
+
+fn workspace_file_digest(path: &Path, workspace: &Path) -> Result<String> {
+    let real_workspace = fs::canonicalize(workspace)
+        .map_err(|e| err(format!("resolve workspace {}: {e}", workspace.display())))?;
+    let real = fs::canonicalize(path)
+        .map_err(|e| err(format!("resolve model weights {}: {e}", path.display())))?;
+    if !real.starts_with(&real_workspace) {
+        return Err(err(format!(
+            "model weights must stay inside the workspace: {}",
+            path.display()
+        )));
+    }
+    let bytes = fs::read(&real)
+        .map_err(|e| err(format!("read model weights {}: {e}", real.display())))?;
+    Ok(ase_judge::sha256_hex(&bytes))
+}
+
+fn parse_runner_config(
+    args: &[String],
+    prefix: &str,
+    workspace: &Path,
+) -> Result<Option<ase_judge::RunnerConfig>> {
+    let program = opt(args, &format!("--{prefix}-runner"));
+    let model_id = opt(args, &format!("--{prefix}-model-id"));
+    let digest = opt(args, &format!("--{prefix}-model-sha256"));
+    let weights = opt(args, &format!("--{prefix}-weights"));
+    let runner_args = opts(args, &format!("--{prefix}-arg"));
+    let timeout = match opt(args, &format!("--{prefix}-timeout-ms")) {
+        Some(text) => Some(
+            text.parse::<u64>()
+                .map_err(|_| err(format!("invalid --{prefix}-timeout-ms: {text}")))?,
+        ),
+        None => None,
+    };
+    let any = program.is_some()
+        || model_id.is_some()
+        || digest.is_some()
+        || weights.is_some()
+        || !runner_args.is_empty();
+    if !any {
+        return Ok(None);
+    }
+    let program = program.ok_or_else(|| err(format!("--{prefix}-runner is required")))?;
+    let model_id = model_id.ok_or_else(|| err(format!("--{prefix}-model-id is required")))?;
+    let model_sha256 = match (digest, weights) {
+        (Some(digest), None) => {
+            if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(err(format!(
+                    "--{prefix}-model-sha256 must be a 64-hex digest"
+                )));
+            }
+            digest.to_ascii_lowercase()
+        }
+        (None, Some(weights)) => {
+            workspace_file_digest(Path::new(&weights), workspace)?
+        }
+        (Some(_), Some(_)) => {
+            return Err(err(format!(
+                "use either --{prefix}-model-sha256 or --{prefix}-weights, not both"
+            )))
+        }
+        (None, None) => {
+            return Err(err(format!(
+                "--{prefix}-model-sha256 or --{prefix}-weights is required"
+            )))
+        }
+    };
+    Ok(Some(ase_judge::RunnerConfig {
+        program,
+        args: runner_args,
+        model_id,
+        model_sha256,
+        timeout_ms: timeout.unwrap_or(ase_judge::runner::DEFAULT_TIMEOUT_MS),
+    }))
+}
+
+fn parse_stage_model(
+    args: &[String],
+    prefix: &str,
+    workspace: &Path,
+) -> Result<Option<ase_judge::runner::StageModel>> {
+    let profile_name = opt(args, &format!("--{prefix}-profile"));
+    let process_any = opt(args, &format!("--{prefix}-runner")).is_some()
+        || opt(args, &format!("--{prefix}-model-id")).is_some()
+        || opt(args, &format!("--{prefix}-model-sha256")).is_some()
+        || opt(args, &format!("--{prefix}-weights")).is_some()
+        || !opts(args, &format!("--{prefix}-arg")).is_empty();
+    if profile_name.is_some() && process_any {
+        return Err(err(format!(
+            "use either --{prefix}-profile or the process runner flags, not both"
+        )));
+    }
+    if let Some(name) = profile_name {
+        let timeout_ms = match opt(args, &format!("--{prefix}-api-timeout-ms")) {
+            Some(text) => text.parse::<u64>().map_err(|_| {
+                err(format!("invalid --{prefix}-api-timeout-ms: {text}"))
+            })?,
+            None => ase_llm::DEFAULT_TIMEOUT_MS,
+        };
+        let env = ase_llm::capture_env();
+        let resolution = ase_llm::resolve(&env, Some(&name))
+            .map_err(|e| err(format!("{prefix} API profile: {e}")))?;
+        return Ok(Some(ase_judge::runner::StageModel::Api(
+            ase_judge::runner::ApiStage {
+                resolution,
+                timeout_ms,
+            },
+        )));
+    }
+    if opt(args, &format!("--{prefix}-api-timeout-ms")).is_some() {
+        return Err(err(format!(
+            "--{prefix}-api-timeout-ms needs --{prefix}-profile"
+        )));
+    }
+    Ok(parse_runner_config(args, prefix, workspace)?
+        .map(ase_judge::runner::StageModel::Process))
+}
+
+fn cmd_judge(args: &[String]) -> Result<()> {
+    let Some(sub) = args.first().map(String::as_str) else {
+        judge_usage();
+        return Err(err("judge needs run, verify, report, show, fixture or contract-runner"));
+    };
+    let rest = &args[1..];
+    if matches!(sub, "--help" | "-h") {
+        judge_usage();
+        return Ok(());
+    }
+    match sub {
+        "run" => cmd_judge_run(rest),
+        "verify" => cmd_judge_verify(rest),
+        "report" => cmd_judge_report(rest),
+        "show" => cmd_judge_show(rest),
+        "fixture" => cmd_judge_fixture(rest),
+        "contract-runner" => cmd_judge_contract_runner(rest),
+        other => Err(err(format!("unknown judge command: {other}"))),
+    }
+}
+
+fn cmd_judge_run(args: &[String]) -> Result<()> {
+    let root = PathBuf::from(opt(args, "--root").ok_or_else(|| err("--root is required"))?);
+    let manifest =
+        PathBuf::from(opt(args, "--manifest").ok_or_else(|| err("--manifest is required"))?);
+    let units = PathBuf::from(opt(args, "--units").ok_or_else(|| err("--units is required"))?);
+    let private =
+        PathBuf::from(opt(args, "--private").ok_or_else(|| err("--private is required"))?);
+    let store = PathBuf::from(opt(args, "--store").ok_or_else(|| err("--store is required"))?);
+    let workspace = match opt(args, "--workspace") {
+        Some(path) => PathBuf::from(path),
+        None => std::env::current_dir()
+            .map_err(|e| err(format!("resolve current directory: {e}")))?,
+    };
+    let scope = Scope::parse(&opt(args, "--scope").unwrap_or_else(|| "primary".to_string()))
+        .ok_or_else(|| err("--scope must be primary, unknown or all"))?;
+    let mut only_ordinals = std::collections::BTreeSet::new();
+    for value in opts(args, "--only-ordinal") {
+        only_ordinals.insert(
+            value
+                .parse::<u32>()
+                .map_err(|_| err(format!("invalid --only-ordinal: {value}")))?,
+        );
+    }
+    let limit = match opt(args, "--limit") {
+        Some(value) => Some(
+            value
+                .parse::<usize>()
+                .map_err(|_| err(format!("invalid --limit: {value}")))?,
+        ),
+        None => None,
+    };
+    let slm = parse_stage_model(args, "slm", &workspace)?;
+    let judge = parse_stage_model(args, "judge", &workspace)?;
+    let allow_remote = has(args, "--allow-remote-session-data");
+    for (stage, model) in [("slm", &slm), ("judge", &judge)] {
+        if let Some(ase_judge::runner::StageModel::Api(api)) = model {
+            let profile = &api.resolution.profile;
+            if !profile.endpoint.is_loopback() {
+                if !allow_remote {
+                    return Err(err(format!(
+                        "session data egress is not authorized for {stage}: {} at {} (provider {}); pass --allow-remote-session-data to opt in",
+                        profile.api.as_str(),
+                        profile.endpoint.origin,
+                        profile.provider
+                    )));
+                }
+                eprintln!(
+                    "session data egress: {stage} -> provider {} api {} at {} (synthetic or pinned evaluation input)",
+                    profile.provider,
+                    profile.api.as_str(),
+                    profile.endpoint.origin
+                );
+            }
+        }
+    }
+    let options = ase_judge::EvalOptions {
+        root,
+        manifest,
+        units,
+        private,
+        store,
+        scope,
+        only_ordinals,
+        limit,
+        workspace,
+        verification_only: has(args, "--verification-only"),
+        allow_remote_session_data: allow_remote,
+        slm,
+        judge,
+    };
+    let report = ase_judge::run(&options)?;
+    let value = serde_json::to_value(&report)
+        .map_err(|e| err(format!("serialize judge run report: {e}")))?;
+    if let Some(out) = opt(args, "--out") {
+        fs::write(&out, serde_json::to_string_pretty(&value).unwrap() + "\n")
+            .map_err(|e| err(format!("write judge report {out}: {e}")))?;
+    }
+    println!("{}", serde_json::to_string_pretty(&value).unwrap());
+    Ok(())
+}
+
+fn cmd_judge_verify(args: &[String]) -> Result<()> {
+    let options = ase_judge::VerifyOptions {
+        root: PathBuf::from(opt(args, "--root").ok_or_else(|| err("--root is required"))?),
+        units: PathBuf::from(opt(args, "--units").ok_or_else(|| err("--units is required"))?),
+        private: PathBuf::from(
+            opt(args, "--private").ok_or_else(|| err("--private is required"))?,
+        ),
+        store: PathBuf::from(opt(args, "--store").ok_or_else(|| err("--store is required"))?),
+        include_verification: has(args, "--include-verification"),
+    };
+    let report = ase_judge::verify(&options)?;
+    let value = serde_json::to_value(&report)
+        .map_err(|e| err(format!("serialize judge verify report: {e}")))?;
+    println!("{}", serde_json::to_string_pretty(&value).unwrap());
+    if report.status != "verified" {
+        std::process::exit(3);
+    }
+    Ok(())
+}
+
+fn cmd_judge_report(args: &[String]) -> Result<()> {
+    let store = PathBuf::from(opt(args, "--store").ok_or_else(|| err("--store is required"))?);
+    let value = ase_judge::report(&store, has(args, "--include-verification"))?;
+    println!("{}", serde_json::to_string_pretty(&value).unwrap());
+    Ok(())
+}
+
+fn cmd_judge_show(args: &[String]) -> Result<()> {
+    let store = PathBuf::from(opt(args, "--store").ok_or_else(|| err("--store is required"))?);
+    let unit = opt(args, "--unit");
+    let decision = match opt(args, "--decision") {
+        Some(value) => Some(
+            value
+                .parse::<u32>()
+                .map_err(|_| err(format!("invalid --decision: {value}")))?,
+        ),
+        None => None,
+    };
+    let value = ase_judge::show(
+        &store,
+        unit.as_deref(),
+        decision,
+        has(args, "--include-verification"),
+    )?;
+    println!("{}", serde_json::to_string_pretty(&value).unwrap());
+    Ok(())
+}
+
+fn cmd_judge_fixture(args: &[String]) -> Result<()> {
+    let out = PathBuf::from(opt(args, "--out").ok_or_else(|| err("--out is required"))?);
+    let value = ase_judge::write_fixture(&out)?;
+    println!("{}", serde_json::to_string_pretty(&value).unwrap());
+    Ok(())
+}
+
+fn cmd_judge_contract_runner(args: &[String]) -> Result<()> {
+    use std::io::Read;
+    let mut input = String::new();
+    std::io::stdin()
+        .read_to_string(&mut input)
+        .map_err(|e| err(format!("read contract request: {e}")))?;
+    if has(args, "--fail") {
+        return Err(err("contract runner configured to fail"));
+    }
+    let request: Value = serde_json::from_str(&input)
+        .map_err(|e| err(format!("parse contract request: {e}")))?;
+    if request.get("protocol").and_then(Value::as_str) != Some(ase_judge::LOCAL_MODEL_PROTOCOL) {
+        return Err(err("contract runner received a foreign protocol"));
+    }
+    let stage = request
+        .get("stage")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if stage != "slm" && stage != "judge" {
+        return Err(err("contract runner received an unknown stage"));
+    }
+    let label = opt(args, "--label").unwrap_or_else(|| "continue".to_string());
+    let decision = ase_judge::Decision::parse(&label)
+        .ok_or_else(|| err(format!("invalid --label: {label}")))?;
+    let model_id =
+        opt(args, "--model-id").unwrap_or_else(|| "ase-contract-runner".to_string());
+    let model_sha256 = opt(args, "--model-sha256").unwrap_or_else(|| {
+        ase_judge::sha256_hex(b"ase-contract-runner/v1")
+    });
+    let response = json!({
+        "protocol": ase_judge::LOCAL_MODEL_PROTOCOL,
+        "label": decision.as_str(),
+        "confidence": "medium",
+        "abstain_reason": if decision == ase_judge::Decision::Unknown {
+            Some("contract_runner_abstain")
+        } else {
+            None
+        },
+        "model_id": model_id,
+        "model_sha256": model_sha256,
+        "stage": stage,
+        "received_input_sha256": request.get("input_sha256"),
+    });
+    println!("{}", serde_json::to_string(&response).unwrap());
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `ase llm` — user-scoped API configuration and secret resolution.
+//
+// The key is only ever read from hidden stdin. Every mutating/status command
+// validates its flags strictly and never echoes a value that could have been a
+// pasted secret; the status/JSON paths are built from explicit non-secret
+// fields.
+// ---------------------------------------------------------------------------
+
+fn cmd_llm(args: &[String]) -> Result<()> {
+    let Some(sub) = args.first().map(String::as_str) else {
+        llm_usage();
+        return Ok(());
+    };
+    if matches!(sub, "--help" | "-h") {
+        llm_usage();
+        return Ok(());
+    }
+    let rest = &args[1..];
+    match sub {
+        "config" => cmd_llm_config(rest),
+        "key" => cmd_llm_key(rest),
+        "status" => cmd_llm_status(rest),
+        "smoke" => cmd_llm_smoke(rest),
+        _ => Err(err("unknown llm command (see `ase llm --help`)")),
+    }
+}
+
+fn llm_usage() {
+    println!(
+        "ase llm config [--json] [--profile NAME]\n\
+         ase llm config set --profile NAME --provider NAME\n\
+         \x20           [--type chat-completions|responses|decision|gemini|gemini-decision] [--endpoint URL]\n\
+         \x20           [--model MODEL] [--effort none|minimal|low|medium|high]\n\
+         \x20           [--use] [--json]\n\
+         ase llm config use --profile NAME [--json]\n\
+         ase llm config enroll --profile NAME --provider NAME\n\
+         \x20           [--type ...] [--endpoint URL] [--model MODEL] [--effort ...]\n\
+         \x20           [--use] [--json]\n\
+         ase llm key set [--profile NAME] [--json]   (hidden prompt; never argv)\n\
+         ase llm key clear [--profile NAME] [--json]\n\
+         ase llm status [--profile NAME] [--json]\n\
+         ase llm smoke [--profile NAME] [--timeout-ms N] [--json]\n\
+         \x20           (one fixed synthetic call; no session or journal data)\n\n\
+         Non-secret settings resolve in this order: profile/config file, then\n\
+         ASE_LLM_PROVIDER, OPENAI_API_TYPE, OPENAI_API_ENDPOINT,\n\
+         OPENAI_API_MODEL and OPENAI_API_EFFORT. The credential is the typed\n\
+         API family's process variable when nonempty (OPENAI_API_KEY or\n\
+         GEMINI_API_KEY), otherwise the stored key for the exact\n\
+         (provider, normalized origin) pair.\n\
+         Only `ase llm smoke` sends a request. Every other `ase llm` command is\n\
+         local and opens no socket."
+    );
+}
+
+/// Strict option validation. Values are never printed back: an unexpected
+/// token is rejected without echoing it, so `ase llm key set --key SECRET`
+/// cannot place the secret in the error path.
+fn llm_expect(args: &[String], value_flags: &[&str], bool_flags: &[&str]) -> Result<()> {
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        let Some(flag) = arg.strip_prefix("--") else {
+            return Err(err(
+                "unexpected argument: the API key is only read from a hidden prompt, never from argv",
+            ));
+        };
+        if flag.contains('=') {
+            return Err(err(
+                "llm options must be passed as `--flag VALUE`; `--flag=value` is not accepted",
+            ));
+        }
+        let name = format!("--{flag}");
+        if bool_flags.iter().any(|allowed| *allowed == name) {
+            index += 1;
+            continue;
+        }
+        if value_flags.iter().any(|allowed| *allowed == name) {
+            let value = args.get(index + 1).ok_or_else(|| {
+                err(format!("llm option {name} needs a value"))
+            })?;
+            if value.starts_with("--") {
+                return Err(err(format!("llm option {name} needs a value")));
+            }
+            index += 2;
+            continue;
+        }
+        return Err(err("unknown llm option (see `ase llm --help`)"));
+    }
+    Ok(())
+}
+
+fn cmd_llm_config(args: &[String]) -> Result<()> {
+    let Some(sub) = args.first().map(String::as_str) else {
+        return print_llm_status(None, false, false);
+    };
+    if matches!(sub, "--help" | "-h") {
+        llm_usage();
+        return Ok(());
+    }
+    if sub.starts_with("--") {
+        llm_expect(args, &["--profile"], &["--json"])?;
+        return print_llm_status(opt(args, "--profile"), has(args, "--json"), false);
+    }
+    let rest = &args[1..];
+    match sub {
+        "set" => {
+            llm_expect(
+                rest,
+                &[
+                    "--profile", "--provider", "--type", "--endpoint", "--model",
+                    "--effort",
+                ],
+                &["--json", "--use"],
+            )?;
+            let env = ase_llm::capture_env();
+            let mut config = ase_llm::load_config(&env)?
+                .config
+                .unwrap_or_else(ase_llm::ConfigFile::empty);
+            let name = llm_profile_name(rest);
+            let (provider, api, endpoint, model, effort) = llm_settings(rest)?;
+            ase_llm::apply_edit(
+                &mut config,
+                &ase_llm::ProfileEdit {
+                    profile: &name,
+                    provider: provider.as_deref(),
+                    api,
+                    endpoint: endpoint.as_deref(),
+                    model: model.as_deref(),
+                    effort,
+                    make_active: has(rest, "--use"),
+                },
+            )?;
+            let path = ase_llm::save_config(&env, &config)?;
+            if has(rest, "--json") {
+                let value = json!({
+                    "saved": true,
+                    "profile": name,
+                    "provider": config.profiles.get(&name).map(|p| p.provider.clone()),
+                    "active": config.active,
+                    "config_path": path.display().to_string(),
+                });
+                println!("{}", serde_json::to_string_pretty(&value).unwrap());
+            } else {
+                println!("saved profile {name} in {}", path.display());
+                println!(
+                    "next: run `ase llm key set --profile {name}` in a terminal (hidden input)"
+                );
+            }
+            Ok(())
+        }
+        "use" => {
+            llm_expect(rest, &["--profile"], &["--json"])?;
+            let name = opt(rest, "--profile").ok_or_else(|| err("--profile is required"))?;
+            let env = ase_llm::capture_env();
+            let mut config = ase_llm::load_config(&env)?
+                .config
+                .ok_or_else(|| err("llm_config_missing: run `ase llm config set` first"))?;
+            ase_llm::use_profile(&mut config, &name)?;
+            let path = ase_llm::save_config(&env, &config)?;
+            if has(rest, "--json") {
+                let value = json!({
+                    "active": name,
+                    "config_path": path.display().to_string(),
+                });
+                println!("{}", serde_json::to_string_pretty(&value).unwrap());
+            } else {
+                println!("active profile: {name}");
+                println!("credential is resolved for the endpoint origin, so a profile on the same origin reuses the stored key");
+            }
+            Ok(())
+        }
+        "enroll" => {
+            llm_expect(
+                rest,
+                &[
+                    "--profile", "--provider", "--type", "--endpoint", "--model",
+                    "--effort",
+                ],
+                &["--json", "--use"],
+            )?;
+            let env = ase_llm::capture_env();
+            let mut config = ase_llm::load_config(&env)?
+                .config
+                .unwrap_or_else(ase_llm::ConfigFile::empty);
+            let name = llm_profile_name(rest);
+            let (provider, api, endpoint, model, effort) = llm_settings(rest)?;
+            ase_llm::apply_edit(
+                &mut config,
+                &ase_llm::ProfileEdit {
+                    profile: &name,
+                    provider: provider.as_deref(),
+                    api,
+                    endpoint: endpoint.as_deref(),
+                    model: model.as_deref(),
+                    effort,
+                    make_active: has(rest, "--use"),
+                },
+            )?;
+            let profile = ase_llm::resolve_profile(&env, Some(&name))?;
+            let store = ase_llm::open_store(&env)?;
+            store.ensure_writable()?;
+            ase_llm::save_config(&env, &config)?;
+            eprintln!(
+                "storing the key for provider {} / profile {} ({})",
+                profile.provider, profile.profile, profile.endpoint.origin
+            );
+            let key = ase_llm::read_secret_line(ase_llm::KEY_PROMPT)?;
+            store.set(&profile.provider, &profile.endpoint.origin, &key)?;
+            if has(rest, "--json") {
+                let value = json!({
+                    "stored": true,
+                    "profile": name,
+                    "provider": profile.provider,
+                    "origin": profile.endpoint.origin,
+                    "credential_store": store.backend(),
+                });
+                println!("{}", serde_json::to_string_pretty(&value).unwrap());
+            } else {
+                println!(
+                    "stored key for provider {} at {} in {}",
+                    profile.provider,
+                    profile.endpoint.origin,
+                    store.backend()
+                );
+            }
+            Ok(())
+        }
+        _ => Err(err("unknown llm config command (see `ase llm --help`)")),
+    }
+}
+
+fn llm_profile_name(args: &[String]) -> String {
+    opt(args, "--profile").unwrap_or_else(|| ase_llm::DEFAULT_PROFILE.to_string())
+}
+
+fn llm_settings(
+    args: &[String],
+) -> Result<(
+    Option<String>,
+    Option<ase_llm::ApiKind>,
+    Option<String>,
+    Option<String>,
+    ase_llm::EffortEdit,
+)> {
+    let provider = opt(args, "--provider");
+    let api = match opt(args, "--type") {
+        Some(value) => Some(
+            ase_llm::ApiKind::parse(&value)
+                .ok_or_else(|| {
+                    err("--type must be chat-completions, responses, decision, gemini or gemini-decision")
+                })?,
+        ),
+        None => None,
+    };
+    let endpoint = opt(args, "--endpoint");
+    let model = opt(args, "--model");
+    let effort = match opt(args, "--effort") {
+        Some(value) if value.eq_ignore_ascii_case("none") => ase_llm::EffortEdit::Clear,
+        Some(value) => ase_llm::EffortEdit::Set(value),
+        None => ase_llm::EffortEdit::Keep,
+    };
+    Ok((provider, api, endpoint, model, effort))
+}
+
+fn cmd_llm_key(args: &[String]) -> Result<()> {
+    let Some(sub) = args.first().map(String::as_str) else {
+        return print_llm_status(None, false, false);
+    };
+    if matches!(sub, "--help" | "-h") {
+        llm_usage();
+        return Ok(());
+    }
+    let rest = &args[1..];
+    match sub {
+        "set" => {
+            llm_expect(rest, &["--profile"], &["--json"])?;
+            let env = ase_llm::capture_env();
+            let profile = ase_llm::resolve_profile(&env, opt(rest, "--profile").as_deref())?;
+            let store = ase_llm::open_store(&env)?;
+            store.ensure_writable()?;
+            eprintln!(
+                "storing the key for provider {} / profile {} ({})",
+                profile.provider, profile.profile, profile.endpoint.origin
+            );
+            let key = ase_llm::read_secret_line(ase_llm::KEY_PROMPT)?;
+            store.set(&profile.provider, &profile.endpoint.origin, &key)?;
+            if has(rest, "--json") {
+                let value = json!({
+                    "stored": true,
+                    "profile": profile.profile,
+                    "provider": profile.provider,
+                    "origin": profile.endpoint.origin,
+                    "credential_store": store.backend(),
+                });
+                println!("{}", serde_json::to_string_pretty(&value).unwrap());
+            } else {
+                println!(
+                    "stored key for provider {} at {} in {}",
+                    profile.provider,
+                    profile.endpoint.origin,
+                    store.backend()
+                );
+            }
+            Ok(())
+        }
+        "clear" => {
+            llm_expect(rest, &["--profile"], &["--json"])?;
+            let env = ase_llm::capture_env();
+            let profile = ase_llm::resolve_profile(&env, opt(rest, "--profile").as_deref())?;
+            let store = ase_llm::open_store(&env)?;
+            let deleted = store.delete(&profile.provider, &profile.endpoint.origin)?;
+            let env_override = ase_llm::env_key_present(&env, profile.api);
+            if has(rest, "--json") {
+                let value = json!({
+                    "deleted": deleted,
+                    "profile": profile.profile,
+                    "provider": profile.provider,
+                    "origin": profile.endpoint.origin,
+                    "credential_store": store.backend(),
+                    "env_override_active": env_override,
+                });
+                println!("{}", serde_json::to_string_pretty(&value).unwrap());
+            } else {
+                println!(
+                    "{} credential for provider {} at {}",
+                    if deleted { "deleted" } else { "no stored" },
+                    profile.provider,
+                    profile.endpoint.origin
+                );
+                if env_override {
+                    println!(
+                        "note: a nonempty {} still overrides the store",
+                        profile.api.key_env()
+                    );
+                }
+            }
+            Ok(())
+        }
+        "status" => {
+            llm_expect(rest, &["--profile"], &["--json"])?;
+            print_llm_status(opt(rest, "--profile"), has(rest, "--json"), true)
+        }
+        _ => Err(err("unknown llm key command (see `ase llm --help`)")),
+    }
+}
+
+const SMOKE_INSTRUCTION: &str =
+    "Synthetic protocol check. Choose the option that matches the two synthetic messages. \
+     No real session, journal or user content is present.";
+const SMOKE_INPUT: &str = "<|ase:prev|>\nsynthetic earlier task instruction\n<|ase:curr|>\nsynthetic later refinement of the same task\n";
+const SMOKE_CHOICES: [(&str, &str); 3] = [
+    ("split", "A distinct synthetic task starts."),
+    ("continue", "The same synthetic task continues."),
+    ("unknown", "The synthetic pair does not decide."),
+];
+
+/// One fixed synthetic call through the configured protocol. This is the only
+/// `ase llm` command that opens a socket; it never sends journal, database,
+/// recap or excerpt data, and its report contains no credential or raw body.
+fn cmd_llm_smoke(args: &[String]) -> Result<()> {
+    llm_expect(
+        args,
+        &["--profile", "--timeout-ms"],
+        &["--json"],
+    )?;
+    let timeout_ms = match opt(args, "--timeout-ms") {
+        Some(text) => text
+            .parse::<u64>()
+            .map_err(|_| err("invalid --timeout-ms"))?,
+        None => ase_llm::DEFAULT_TIMEOUT_MS,
+    };
+    let env = ase_llm::capture_env();
+    let resolution = ase_llm::resolve(&env, opt(args, "--profile").as_deref())?;
+    let profile = &resolution.profile;
+    let spec = ase_llm::CallSpec {
+        api: profile.api,
+        model: &profile.model,
+        effort: profile.effort.as_deref(),
+        instruction: SMOKE_INSTRUCTION,
+        input: SMOKE_INPUT,
+        question_id: ase_judge::rubric::QUESTION_ID,
+        choices: &SMOKE_CHOICES,
+    };
+    let result = ase_llm::call(
+        &resolution,
+        &spec,
+        std::time::Duration::from_millis(timeout_ms.max(1)),
+    )
+    .map_err(|e| err(e.to_string()))?;
+    let answer_kind = match &result.answer {
+        ase_llm::WireAnswer::Text(_) => "text",
+        ase_llm::WireAnswer::Choice { .. } => "choice",
+    };
+    let probabilities = match &result.answer {
+        ase_llm::WireAnswer::Choice { probabilities, .. } => Some(probabilities.clone()),
+        ase_llm::WireAnswer::Text(_) => None,
+    };
+    let (label, confidence, abstain_reason) =
+        ase_judge::rubric::interpret(profile.api, result.answer)
+            .map_err(|code| err(format!("typed rubric mapping failed: {code}")))?;
+    let value = json!({
+        "schema": "ase-llm-smoke/v1",
+        "synthetic": true,
+        "network": "used",
+        "profile": profile.profile,
+        "provider": profile.provider,
+        "api": profile.api.as_str(),
+        "endpoint": profile.endpoint.url,
+        "origin": profile.endpoint.origin,
+        "model": profile.model,
+        "effort": {
+            "value": profile.effort,
+            "sent": result.effort_sent,
+        },
+        "auth": {
+            "header": result.auth_header,
+            "scheme": result.auth_scheme,
+            "value_present": true,
+            "value_printed": false,
+        },
+        "request": {
+            "body_keys": result.body_keys,
+            "session_header_sent": result.session_sent,
+        },
+        "answer": {
+            "kind": answer_kind,
+            "label": label.as_str(),
+            "confidence": confidence.as_ref().map(|value| json!({
+                "semantics": value.semantics(),
+                "value": value.value_json(),
+            })),
+            "abstain_reason": abstain_reason,
+            "probabilities": probabilities,
+            "model": result.model,
+            "usage": ase_llm::usage_json(&result.usage),
+        },
+        "status": result.status,
+    });
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&value)
+            .map_err(|e| err(format!("serialize llm smoke report: {e}")))?
+    );
+    Ok(())
+}
+
+fn cmd_llm_status(args: &[String]) -> Result<()> {
+    llm_expect(args, &["--profile"], &["--json"])?;
+    print_llm_status(opt(args, "--profile"), has(args, "--json"), true)
+}
+
+fn print_llm_status(
+    profile: Option<String>,
+    as_json: bool,
+    exit_on_not_ready: bool,
+) -> Result<()> {
+    let env = ase_llm::capture_env();
+    let report = ase_llm::status(&env, profile.as_deref())?;
+    if as_json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report)
+                .map_err(|e| err(format!("serialize llm status: {e}")))?
+        );
+    } else {
+        println!("config: {}", report.config_path);
+        println!("config source: {}", report.config_source);
+        if let Some(name) = &report.profile {
+            println!("profile: {name}");
+        }
+        if let Some(value) = &report.provider {
+            println!("provider: {value}");
+        }
+        if let Some(value) = &report.api {
+            println!("api: {value}");
+        }
+        if let Some(value) = &report.endpoint {
+            println!("endpoint: {value}");
+        }
+        if let Some(value) = &report.origin {
+            println!("origin: {value}");
+        }
+        if let Some(value) = &report.model {
+            println!("model: {value}");
+        }
+        println!(
+            "effort: {}",
+            report.effort.as_deref().unwrap_or("none")
+        );
+        println!(
+            "credential: {} ({})",
+            report.credential_source, report.credential_store
+        );
+        println!(
+            "env overrides: {}",
+            if report.env_overrides.is_empty() {
+                "none".to_string()
+            } else {
+                report.env_overrides.join(", ")
+            }
+        );
+        for note in &report.notes {
+            println!("note: {note}");
+        }
+        for check in &report.checks {
+            println!(
+                "check {}: {} ({})",
+                check.name,
+                if check.ok { "ok" } else { "failed" },
+                check.detail
+            );
+        }
+        println!("ready: {}", report.ready);
+        println!("network: not used");
+        if !report.configured {
+            println!();
+            println!(
+                "one-time enrollment: ase llm config enroll --profile default \\\n  --type chat-completions \\\n  --endpoint https://api.openai.com/v1/chat/completions \\\n  --model <MODEL>"
+            );
+        }
+    }
+    if exit_on_not_ready && report.configured && !report.ready {
+        std::process::exit(3);
+    }
     Ok(())
 }

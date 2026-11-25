@@ -4,8 +4,13 @@ P0a is a standalone, address-only source index for OMP/Codex session files. It
 answers *where* an observation came from. P0b adds a generation-pinned,
 contentless full-text and shingle layer for allowlisted prose and tool-call
 signatures. P0c resolves task identity from file-name grammar, `parentSession`
-delegation and `task_id` prose markers with inspectable evidence. No layer
-calls a model.
+delegation and `task_id` prose markers with inspectable evidence. No P0/P1/P2
+layer calls a model; the P3 `judge` layer is the only model caller and runs
+offline only (a workspace-local process or an explicitly configured typed API
+profile), never on a query path. A request that carries session text to a
+non-loopback endpoint requires an explicit run opt-in; `ase llm smoke` is the
+fixed synthetic wire check and sends no session data. `ase llm` stores the
+non-secret API profile and the user-scoped API key used by that transport.
 
 ## Design documentation
 
@@ -183,6 +188,132 @@ ase bench-show --n 2000 --seed 1 --index ase.index --json
 Defaults: `--index ase.index`; OMP root `C:/Users/admin/.omp/agent/sessions`;
 Codex root `C:/Users/admin/.codex/sessions`.
 
+`ase verify <bundle-dir>` reopens a P4 evidence bundle from a private local
+source map. It is distinct from the span-level `verify --all` above, whose
+flags and output are unchanged.
+
+```bash
+ase verify fixtures/p4/bundle-positive-a1 \
+  --local-map fixtures/p4/local-map-positive-a1.json \
+  --verdicts fixtures/p4/verdicts-positive-a1.json --json
+```
+
+The `--local-map` JSON is never part of the bundle. It carries
+`schema: ase-p4-local-sources-v1`, a pinned `snapshot` (`snapshot_id`,
+`core_digest`, per-file `sha256`/`size`), and `aliases` mapping each opaque
+`src-<16 hex>` to a file id, file digest and local path. Relative paths are
+resolved next to the map file. Without a supplied map, an unknown alias, an
+absent source or an unreadable source, every affected row is reported
+`unverified`; the command never returns `verified` on missing evidence.
+
+Selectors use `block-v1|span:<byte-offset>:<byte-length>|message.content[<index>]|<block-type>`.
+The block type is `toolCall` for a call and the type of the reopened result
+block (`toolResult` or native OMP `text`). Verification reads those exact bytes
+again, re-runs the selector, checks the strong SHA-256 of the reopened block,
+resolves the paired result by `toolCallId`/`id`, re-applies `ase-p4-redact-v1`,
+and recomputes the excerpt and input identities. The displayed signature is
+UTF-8-safe capped at 160 bytes; an optional `result_lines` field records how
+many of the first three redacted lines fit the 512-byte call cap so the exact
+published excerpt can be regenerated. Bundle and view digests, engine/redaction
+versions and the snapshot pin are checked first. The JSON report separates
+`evidence_total`/`evidence_verified`/`evidence_failed`/`evidence_unverified`,
+`motifs_total`/`motifs_verified`, and optional read-only assertion counts;
+`failures[]` carries path-free codes and details.
+
+If the whole source file digest differs but every reopened span still checks
+out, rows are accepted as `verified_span_after_append` with a separate
+watermark note. That means only the cited spans were rechecked; it makes no
+claim that the current file is complete or that a P4 gate was measured. The
+optional `--verdicts FILE` is a read-only cross-check against the bundle;
+nothing is imported or written, and no model or network call is made.
+
+`ase export motif:<id> --out DIR --local-map FILE` writes a shareable P4 bundle
+from the pinned motif query. Addresses come from repeated `--address
+PROJECT|TASK` or from a private local `--addresses FILE`; the query config,
+representative policy, redaction policy and citation limits are fixed by the
+frozen contract and are not CLI options.
+
+```bash
+ase export "motif:$MOTIF_ID" \
+  --out .tmp/p4/bundle \
+  --local-map .tmp/p4/local-map.json \
+  --addresses "$TASK_ADDRESSES" \
+  --index "$INDEX" --json
+ase verify .tmp/p4/bundle --local-map .tmp/p4/local-map.json --json
+```
+
+The output directory must be empty. `bundle.json`, `motif.json`, `evidence.md`
+and `questions.md` contain only observations, opaque aliases, digests and fixed
+questions; no real source path, alias map, journal, raw tool output, verdict,
+catalog entry or local tracking identity is included. The `--local-map` file is
+written outside the bundle and is required to reopen evidence. Export selects at
+most five representatives per motif in the fixed earliest → latest →
+most-divergent → failure → fill order, redacts result text before publication,
+and drops trailing fill/divergent/failure representatives if the 32 KiB bundle
+cap is reached. A private staging copy is reopened and verified first; a digest,
+span, selector, view, redaction or leak mismatch refuses publication and leaves
+the output directory untouched. Export reports evidence counts only for that
+prepublication check; it does not measure a P4 gate.
+
+`ase import verdicts FILE --bundle DIR --local-map FILE --store FILE` imports
+externally written judgments into a separate local assertion layer. The bundle
+and every referenced evidence row are reopened through the private local map
+before any write; the verdict file is never a source-evidence substitute and
+the tool never writes or infers a judgment.
+
+```bash
+ase import verdicts fixtures/p4/verdicts-positive-a1.json \
+  --bundle fixtures/p4/bundle-positive-a1 \
+  --local-map fixtures/p4/local-map-positive-a1.json \
+  --store .tmp/p4/assertions.json --json
+ase verify fixtures/p4/bundle-positive-a1 \
+  --local-map fixtures/p4/local-map-positive-a1.json \
+  --verdicts fixtures/p4/verdicts-positive-a1.json --json
+```
+
+The `--store FILE` is a local `ase-p4-assertions-v1` JSON layer, never part of
+the bundle. Each accepted row keeps its `assertion_id`, bundle id/digest,
+motif/occurrence/question ids, judgment fields, sorted evidence references,
+input identity, path-free evidence span references, the digest of the verdict
+file and the judge/generated-at provenance. A local registry maps evidence ids
+to the bundle that verified them, so an id from a different bundle is reported
+`cross_bundle_reference` rather than silently accepted. Contract §4.3 checks
+run in order: unsupported schema, wrong bundle id, stale bundle digest/version,
+missing judge, unknown occurrence/question, missing or cross-bundle or
+unverified evidence, stale input identity, recomputed assertion id conflict,
+and catalog key/kind grammar. A content-identical replay is
+`duplicate_ignored`; an id reused with another body is `assertion_id_conflict`.
+Rejected rows are never stored; all rows that pass are inserted together in one
+atomic replace, and when no row passes the store is left byte-identical. The
+command exits nonzero if any row was rejected. No model, catalog join or P4
+gate measurement is performed here.
+
+`ase join skill-gap --store FILE --catalog FILE --bundle DIR --local-map FILE`
+compares only verified persisted assertions with a user-supplied
+`ase-skill-catalog-v1` file. It reopens the bundle evidence through the private
+map again, drops assertions whose bundle identity, judged content or cited
+spans no longer verify, and emits one row per surviving assertion. Matching is
+exact byte equality on `(catalog_kind, key or alias)`: `match`, `no_match`,
+`ambiguous` or `insufficient_input`. An incomplete catalog kind yields
+`insufficient_input`, never `no_match`, and a catalog miss is explicitly not
+evidence that a skill is absent or should be created.
+
+```bash
+ase join skill-gap --store .tmp/p4/assertions.json \
+  --catalog fixtures/p4/catalog-positive-a1.json \
+  --bundle fixtures/p4/bundle-positive-a1 \
+  --local-map fixtures/p4/local-map-positive-a1.json --json
+```
+
+Each row carries `assertion_id`, `occurrence_id`, sorted `evidence_refs`,
+path-free `evidence_span_refs`, `verdict_digest`, sorted `entry_ids`, `reasons`
+and a deterministic `join_id`, so row → verdict → occurrence → span stays
+openable without exposing a private source path. Add `--verdicts FILE` to
+recheck each assertion's verdict digest and judged content against the original
+verdict file as well. This command is read-only: it never writes the assertion
+store, bundle or catalog, never calls a model, and reports no gate result.
+
+
 `ase work project` derives `Turn`/`Episode` rows under rule
 `omp-turn-episode` / `turn-episode-v1`, compatible with the locked Sprint-4
 reference rule `s4t1-turn-v1`. A turn is one assistant `message` entry with a
@@ -256,6 +387,335 @@ contract and is unaffected by analytics window scoping.
 `ase fixture --out <DIR>` writes synthetic OMP/Codex fixtures (including a
 `.zstd` file) for reproducible behavioral checks. No real transcript text is
 written to fixtures or artifacts.
+
+## P3 offline evaluation (`ase judge`)
+
+`ase judge` runs the P3 evaluation over a pinned, reopenable projection: one
+unit is one journal session projected at its active graph leaf, and one
+decision is an adjacent pair of human user messages on that path. The input
+pin is the Sprint-6 cohort manifest plus its path-free units file and private
+path map; the run re-reads every selected journal, checks the pinned size and
+SHA-256, and refuses to continue if the active leaf, human-message count or
+product user count differs from the pin.
+
+```bash
+ase judge run --root <PINNED_CORPUS> \
+  --manifest <manifest.json> --units units.jsonl --private private.json \
+  --store .tmp/p3.db --scope primary --workspace . --out .tmp/p3-run.json
+ase judge verify --root <PINNED_CORPUS> --units units.jsonl \
+  --private private.json --store .tmp/p3.db --include-verification
+ase judge report --store .tmp/p3.db --include-verification
+ase judge show --store .tmp/p3.db --unit <UNIT_ID> --decision 0
+```
+
+Three generators are separated by identity, version and cache namespace:
+
+- `baseline-rules` (`baseline-rubric-v2`) is a deterministic bilingual
+  lexical baseline. It applies the frozen rubric's observable priorities:
+  explicit task reset/hand-off, an independent named deliverable, then
+  same-deliverable refinement; acknowledgement-only messages and undecidable
+  pairs stay `unknown`.
+- the SLM boundary stage (`slm-boundary-v2`) and the Judge
+  (`judge-adjudicate-v2`) are independent local-model stages. The Judge sees
+  the baseline and SLM labels as codes and is never merged with either.
+
+An assertion carries its two exact source anchors (ordinal, entry id,
+offset/length, line SHA-256), the rendered-input digest, the projection and
+prompt/rule versions, and the declared generator identity. `insert` rejects an
+assertion with missing or malformed evidence, re-opens both spans against the
+source and refuses to store prose. The cache key is
+`(input_sha256, generator, rule/prompt version, generator identity, view/render
+version, verification namespace)`; it never contains a whole-journal digest,
+so appending elsewhere in a journal does not invalidate a decision, while a
+changed span, changed version or changed model identity does.
+
+Model access has two backends. The first is a workspace-local process: a
+runner program that reads one JSON request on stdin and writes one JSON
+response on stdout:
+
+```json
+{"protocol":"ase-local-model/v1","stage":"slm","generator_id":"<id>",
+ "prompt_version":"slm-boundary-v2","input_sha256":"<digest>","prompt":"<text>"}
+```
+
+```json
+{"protocol":"ase-local-model/v1","label":"split|continue|unknown",
+ "confidence":"high|medium|low","abstain_reason":null,
+ "model_id":"<declared id>","model_sha256":"<declared 64-hex digest>"}
+```
+
+Configure it with `--slm-runner PROG --slm-arg ... --slm-model-id ID` plus
+`--slm-model-sha256 HEX` or `--slm-weights <workspace file>` (the same flags
+exist with the `judge-` prefix).
+
+The second backend is one typed API profile resolved by `ase llm`:
+`--slm-profile NAME` and `--judge-profile NAME` (plus optional
+`--slm-api-timeout-ms` / `--judge-api-timeout-ms`). The profile selects exactly
+one of the five protocols:
+
+| API kind | Request shape | Credential location | Effort |
+|---|---|---|---|
+| `chat-completions` | `model`, `messages`, optional `reasoning_effort` | `Authorization: Bearer` | profile value, default `medium`; `none` is explicit |
+| `responses` | `model`, `input`, optional `reasoning.effort` | `Authorization: Bearer` | profile value, default `medium`; `none` is explicit |
+| `gemini` | native `systemInstruction` + `contents` | `x-goog-api-key` | never sent |
+| `decision` (Console System One) | `model`, `state`, `questions` | `Authorization: Bearer` | never sent |
+| `gemini-decision` | `model`, `input`, `questions` | `x-goog-api-key` | never sent |
+
+The open-ended question criteria are the shared rubric options
+(`split`/`continue`/`unknown`). A generation model must return one JSON object
+with a verbal confidence (`high`/`medium`/`low`); a decision API returns a
+calibrated probability. The store keeps those semantics separate: generation
+values are written as `verbal:<level>`, decision values as
+`probability:<value>`, and `judge show` reports a `confidence_semantics`
+object. Neither value is translated into the other or thresholded by an
+uncalibrated cutoff. Prompt/rubric versions were bumped to
+`slm-boundary-v2`/`judge-adjudicate-v2`; historical `-v1` assertions remain
+valid evidence and are not reinterpreted.
+
+The transport performs exactly one request: no retry, no redirect (WinHTTP
+redirects are disabled and a 3xx is rejected), and no credential forwarding.
+On Windows TLS and system trust come from WinHTTP; other platforms support the
+validated loopback `http` path and report HTTPS as unavailable. Errors are
+stable codes only (`auth_rejected`, `bad_request`, `rate_limited`,
+`redirect_refused`, typed rejection codes); a response body, prompt or key is
+never placed in an error or report. The API cache identity covers the typed
+API, normalized endpoint, provider, model, resolved effort and versioned wire
+semantics, and never the credential, so one store cannot mix protocols or
+effort configurations. Preparing a stage performs no network call, which is
+why a warm replay makes zero model calls.
+
+Session data leaves the workspace only with an explicit opt-in. A non-loopback
+API profile is refused before any request unless the run passes
+`--allow-remote-session-data`; the command then prints the stage, provider,
+typed API and destination origin. Loopback synthetic runs need no opt-in.
+
+A program outside the workspace, a missing program, an unreachable endpoint, a
+timeout, an invalid response, an effort the protocol cannot carry or a
+credential failure is recorded as `unavailable`/`failed`/`rejected`; the stage
+produces no assertions and never falls back to the baseline, fixture output or
+a different model/effort. `show`, `report` and `verify` are read-only, do not
+construct a runner and cannot reach a model or a network.
+
+`ase judge fixture` and `ase judge contract-runner` support the synthetic
+contract check. The contract runner is a protocol double; runs that use it must
+pass `--verification-only`, which uses a separate cache namespace and report
+partition, so its labels are never read as evaluation results.
+
+Current status: the baseline ran on the full pinned cohort. A narrow
+real-inference verification (two units, five decisions) ran cold and warm
+before the Ollama backend was removed. T5 verification replaced that backend
+with a loopback synthetic check of all five protocols: auth header location,
+exact body shape, effort omission, typed parse, redacted failures,
+cold/warm cache and zero-call query paths (90/90 checks, no provider request).
+The full-cohort SLM/Judge run remains unmeasured pending T3, no live provider
+call is part of the T5 candidate, and no P3 gate is claimed. The evaluation
+does not read session recaps, and `unknown` is never merged into either
+positive label.
+
+## LLM API configuration (`ase llm`)
+
+`ase llm` is the configuration/credential/transport boundary for the optional
+P3 Judge API backends. It decides which full request endpoint, typed API,
+model, effort and credential one call uses, and implements exactly one typed
+request for that protocol. Every command except `ase llm smoke` is local and
+opens no socket. `smoke` sends one fixed synthetic rubric pair and never sends
+journal, database, recap or excerpt data. Endpoint URLs and provider names are
+supplied by the owner; there is no catalog or endpoint inference.
+
+Five typed APIs are configured independently:
+
+| API kind | Family | Default effort |
+|---|---|---|
+| `chat-completions` | OpenAI-compatible generation | `medium` |
+| `responses` | OpenAI-compatible generation | `medium` |
+| `decision` | Console System One Decision | none |
+| `gemini` | native Gemini generation (distinct endpoint/auth) | none |
+| `gemini-decision` | native Gemini Decisions (distinct endpoint/auth) | none |
+
+Only the two OpenAI-compatible generation protocols use the OpenAI effort
+parameter. `none` is a valid explicit value there (for a target that advertises
+only `none`/`high`) and is sent verbatim; there is no automatic conversion or
+retry with another effort. Native Gemini generation and both decision kinds
+never resolve or send an effort, and `OPENAI_API_EFFORT` is reported as ignored
+for them.
+
+Supported commands:
+
+```bash
+ase llm config                     # redacted local status (no network)
+ase llm config set --profile chat --provider openai \
+  --type chat-completions \
+  --endpoint https://api.openai.com/v1/chat/completions \
+  --model <MODEL> --use
+ase llm config set --profile gemini --provider gemini-native --type gemini \
+  --endpoint <FULL_GEMINI_GENERATE_URL> --model <MODEL>
+ase llm config set --profile gemini-decision --provider gemini-native \
+  --type gemini-decision --endpoint <FULL_GEMINI_DECISION_URL> --model <MODEL>
+ase llm config use --profile responses
+ase llm config enroll --profile chat      # one-time hidden key input
+ase llm key set --profile chat            # same hidden input, key only
+ase llm key clear --profile chat
+ase llm status --json
+ase llm smoke --profile chat --json   # fixed synthetic wire check
+```
+
+`--json` emits a machine-readable redacted report (profile, provider, API
+type, endpoint, normalized origin, model, effort, credential
+presence/backend/family, checks and `network: not_used`). It never contains
+the key.
+
+The config schema is version 2: every profile must name an explicit
+`provider`. A version-1 file is rejected; there is no compatibility shim for
+the unpublished early candidate.
+
+### One-time enrollment (owner action)
+
+Run this once in PowerShell or a native terminal, as the Windows user who will
+run `ase`:
+
+```powershell
+ase llm config enroll --profile chat --provider openai --type chat-completions `
+  --endpoint https://api.openai.com/v1/chat/completions --model <MODEL>
+```
+
+The command prints a prompt and reads the key from hidden stdin. The key must
+not be passed as an argument: `ase llm key set --key VALUE`, `--key=VALUE` and a
+positional key are rejected without echoing the value. The prompt is written to
+stderr; the key is never written to stdout, shell history (there is no argument
+to record), the config file, the repository or a debug/error payload.
+
+On Windows the key is stored as a **Windows Credential Manager Generic
+credential** (`CRED_PERSIST_LOCAL_MACHINE`, user-scoped). Its target is derived
+from the explicit provider and the normalized endpoint origin, and both are
+verified on read. A later process under the same Windows user resolves it
+without any key environment variable and without re-entering the key. The
+config file holds only non-secret settings:
+
+```json
+{
+  "version": 2,
+  "active": "chat",
+  "profiles": {
+    "chat": {
+      "provider": "openai",
+      "api": "chat-completions",
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "model": "<MODEL>"
+    }
+  }
+}
+```
+
+If a platform has no supported native user credential store, `ase llm key set`
+and `ase llm key clear` fail explicitly (`credential_platform_unsupported`)
+before asking for a key; there is no plaintext fallback. A process key override
+remains usable where the CLI supports it.
+
+### Provider scope and credential identity
+
+Provider names are explicit, user-defined aliases such as `openai`,
+`opencode-go`, `gemini-native` or a custom name. There is no catalog or
+network discovery. A saved credential is identified by the pair
+**`(provider, normalized origin)`**:
+
+- the same provider on the same trusted origin shares one key across profiles,
+  so `chat` and `responses` above need one enrollment;
+- distinct providers on the same origin are isolated: `openai` and
+  `opencode-go` pointing at the same host do not share a saved key;
+- switching a profile's provider or changing its host/port changes the lookup
+  pair, so the previous key is never reused and status reports the missing
+  credential for the new pair;
+- `ase llm key clear` removes only that provider+origin entry.
+
+### Environment overrides
+
+`ASE_LLM_PROVIDER` sets or overrides the explicit provider scope (required for
+environment-only configuration). `OPENAI_API_TYPE`,
+`OPENAI_API_ENDPOINT`, `OPENAI_API_MODEL` and `OPENAI_API_EFFORT` override the
+selected profile field by field; whitespace-only values are ignored. Status
+lists the applied override names (never values).
+
+Process key overrides are ephemeral and never written to the store:
+
+- `OPENAI_API_KEY` applies only to `chat-completions`, `responses` and
+  `decision`;
+- `GEMINI_API_KEY` applies only to `gemini` and `gemini-decision`;
+- the two families never fall back to each other.
+
+A nonempty key for the selected kind overrides its stored key; otherwise the
+stored `(provider, origin)` key is used. A provider override or endpoint
+override therefore cannot silently reuse a saved key from another scope.
+
+### Endpoint validation
+
+A profile stores the full request URL. It must be an absolute `http`/`https`
+URL with a non-root request path; user-info (`user:password@host`), fragments
+and credential-shaped query parameters (`api_key`, `token`, `sig`, …) are
+rejected. Plain `http` is accepted only for loopback hosts; remote hosts need
+`https`. The URL is normalized (lowercased host, default port omitted) and the
+credential origin is `scheme://host:port`, always with an explicit port. Native
+Gemini generation and Gemini Decision endpoints are owner-supplied full URLs;
+they are never inferred from a catalog or model name.
+
+### Typed transport and synthetic smoke
+
+`ase-llm` separates resolution, protocol framing and the single network call:
+
+- `resolve_profile(env, profile)` — explicit provider, typed API, validated
+  endpoint, model and effort with environment overrides applied;
+- `resolve(env, profile)` / `resolve_with_store(...)` — the same plus an
+  `ApiKey` for the exact `(provider, origin)` pair (or the kind's process key
+  family); the key is reachable only through `expose()` and its `Debug`
+  representation is redacted;
+- `wire` — builds one request body for the selected typed API and parses one
+  response envelope. Auth location is protocol-defined (`Authorization:
+  Bearer` or `x-goog-api-key`); the credential is not part of the request
+  description;
+- `transport` — the only network path. Windows uses WinHTTP with redirects
+  disabled; other platforms accept the validated loopback `http` path and
+  report HTTPS as unavailable. There is no plaintext fallback for a remote
+  host and no proxy configured by the program;
+- `call` — exactly one send and one typed parse, no retry. A 3xx is
+  `redirect_refused`; a 4xx/5xx maps to a stable code without the response
+  body; a malformed envelope is a typed rejection code. The cache identity is
+  a hash of typed API, normalized endpoint, provider, model, effort and
+  versioned wire/parse semantics, never a key;
+- `status(env, profile)` — the redacted local status report; it opens no
+  socket.
+
+`ase llm smoke [--profile NAME] [--timeout-ms N] [--json]` sends one fixed
+synthetic rubric pair through the selected protocol and prints the auth header
+name, whether an effort was sent, the request's top-level body keys, the typed
+label/confidence semantic, usage and model. It prints no credential, prompt or
+response body. It is the only command that opens a socket.
+
+`ase judge run` uses the same resolution: `--slm-profile NAME` and
+`--judge-profile NAME`. A request that carries the rendered decision pair to a
+non-loopback endpoint is refused unless the run passes
+`--allow-remote-session-data`; the command then prints the stage, provider,
+typed API and destination origin. Loopback smoke and loopback evaluation need
+no opt-in, and no synthetic fixture in this repository is a live provider
+request.
+
+### Verification status
+
+`ase llm status` is the local check: it validates configuration shape, the
+provider+origin binding, the endpoint and the credential presence, and reports
+`network: not_used`. The T4 R2 verification used an isolated
+`ASE_LLM_CREDENTIAL_STORE=dpapi-file:<dir>` store inside the workspace (DPAPI,
+same Windows user) to prove cross-process persistence without writing the real
+user credential store; the native Windows Credential Manager write/read path
+was compiled and its missing-entry read path was exercised, but no real user
+store entry was created by the agent. The owner enrollment above is the
+remaining native action.
+
+T5 verification ran the release CLI against a synthetic loopback server for
+all five protocols: auth header location and value, exact request body shape,
+effort presence/omission, typed parse and confidence semantic, error/body
+redaction, redirect refusal without following, no retry, cold/warm cache per
+protocol, cache namespace separation on a shared store, zero-call
+`report`/`show`/`verify` paths, and refusal of a non-loopback profile without
+opt-in. It made no provider request and used no real key.
 
 ## Source coordinates
 

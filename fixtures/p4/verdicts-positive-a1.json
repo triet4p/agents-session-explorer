@@ -1,0 +1,59 @@
+{
+  "bundle_digest": "sha256:87c84bdaf3026e3032c34066c9463858dc2f40e1ab8b2caf20a6f1e67923b406",
+  "bundle_id": "bun-e4b04cca17550ce5",
+  "bundle_version": "ase-p4-bundle-v1",
+  "generated_at": "2026-11-25T00:00:00Z",
+  "judge": {
+    "judge_id": "judge-fixture-01",
+    "kind": "user"
+  },
+  "schema": "ase-p4-verdicts-v1",
+  "synthetic": true,
+  "verdicts": [
+    {
+      "answer": "variable procedure",
+      "assertion_id": "as-dfa8cb71cf78a125",
+      "catalog_key": "procedure:read-inspect",
+      "catalog_kind": "skill",
+      "evidence_refs": [
+        "ev-b79e408b2beae065",
+        "ev-62c7d5edc6aa5624"
+      ],
+      "input_identity": "6fbd1486b2fd2abd0703aa58d8b5a7b0ae903450a573cb4382feb9dedd243e7d",
+      "occurrence_id": "occ-fixture00000001",
+      "question_id": "Q1",
+      "should_codify": true,
+      "waste_score": 0.25
+    },
+    {
+      "answer": "all three calls are essential",
+      "assertion_id": "as-90c08263f6cbeb0c",
+      "catalog_key": "template:three-call",
+      "catalog_kind": "template",
+      "evidence_refs": [
+        "ev-b79e408b2beae065",
+        "ev-62c7d5edc6aa5624",
+        "ev-31d080abc9b56fe8"
+      ],
+      "input_identity": "6fbd1486b2fd2abd0703aa58d8b5a7b0ae903450a573cb4382feb9dedd243e7d",
+      "occurrence_id": "occ-fixture00000001",
+      "question_id": "Q2",
+      "should_codify": null,
+      "waste_score": null
+    },
+    {
+      "answer": "not decided by this bundle",
+      "assertion_id": "as-6791c8637edbe4a8",
+      "catalog_key": null,
+      "catalog_kind": null,
+      "evidence_refs": [
+        "ev-b79e408b2beae065"
+      ],
+      "input_identity": "6fbd1486b2fd2abd0703aa58d8b5a7b0ae903450a573cb4382feb9dedd243e7d",
+      "occurrence_id": "occ-fixture00000001",
+      "question_id": "Q3",
+      "should_codify": false,
+      "waste_score": 0.1
+    }
+  ]
+}

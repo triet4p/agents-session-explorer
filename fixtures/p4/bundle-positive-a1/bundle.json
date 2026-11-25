@@ -1,0 +1,100 @@
+{
+  "bundle_digest": "sha256:87c84bdaf3026e3032c34066c9463858dc2f40e1ab8b2caf20a6f1e67923b406",
+  "bundle_id": "bun-e4b04cca17550ce5",
+  "bundle_version": "ase-p4-bundle-v1",
+  "citation_limits": {
+    "max_bundle_bytes": 32768,
+    "max_excerpt_bytes_per_call": 512,
+    "max_excerpt_bytes_per_occurrence": 4096,
+    "max_occurrences_per_motif": 5,
+    "max_result_line_bytes": 160,
+    "max_result_lines": 3
+  },
+  "created_by": "ase-p4-t2-verify-fixture",
+  "engine": {
+    "binary_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "evidence_render": "ase-p4-evidence-md-v1",
+    "name": "ase",
+    "questions_render": "ase-p4-questions-md-v1",
+    "redaction_policy": "ase-p4-redact-v1",
+    "rule_versions": {
+      "callsig": "callsig-v1",
+      "motif_alignment": "motif-align-v1",
+      "motif_dedupe": "seq-text-v1",
+      "projection": "block-v1"
+    }
+  },
+  "motifs": [
+    {
+      "evidence_path": "motifs/mot-fixture00000001/evidence.md",
+      "evidence_sha256": "sha256:45a35522cc15a0450c76ac4911b0bf8d136f233d424863c58a59408b44e823a9",
+      "motif_id": "mot-fixture00000001",
+      "motif_path": "motifs/mot-fixture00000001/motif.json",
+      "motif_sha256": "sha256:556d1335075c9b5480a107fad990b71eca0380bed185aec141d2cffab9d85bdb",
+      "questions_path": "motifs/mot-fixture00000001/questions.md",
+      "questions_sha256": "sha256:fe8e62d62c17f979e20ce17db183c2aa89ae475e0e56a968180d92f038cf9cd0"
+    }
+  ],
+  "query": {
+    "config": {
+      "family": {
+        "k_max": 5,
+        "k_min": 3,
+        "tau": 0.5
+      },
+      "max_gap": 2,
+      "min_tasks": 2
+    },
+    "dedupe_rule": {
+      "name": "motif-sequence-text",
+      "version": "seq-text-v1"
+    },
+    "query_result_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+    "rule": {
+      "name": "motif-alignment",
+      "version": "motif-align-v1"
+    }
+  },
+  "redaction": {
+    "allowed_fields": [
+      "tool name",
+      "callsig-v1 argument signature",
+      "first N result text lines after redaction"
+    ],
+    "forbidden": [
+      "real paths",
+      "alias-to-source mapping",
+      "raw tool output",
+      "thinking or system text",
+      "verdicts",
+      "session identifiers"
+    ],
+    "markers": [
+      "«path»",
+      "«url»",
+      "«email»",
+      "«secret»",
+      "«token»",
+      "«nontext»",
+      "«empty»"
+    ],
+    "policy": "ase-p4-redact-v1"
+  },
+  "representative_policy": "ase-p4-representatives-v1",
+  "schema": "ase-p4-bundle-v1",
+  "snapshot": {
+    "core_digest": "bcc7096a9a6d9f3dde8f2649a25c2cd680ed3a776463f40e5e9322f21554ff41",
+    "file_count": 1,
+    "files": [
+      {
+        "file_id": 0,
+        "sha256": "ebd48f3ad46e451134b11374f127a54c286d866a741171e7bb51edac2bee68e5",
+        "size": 2382
+      }
+    ],
+    "provider": "omp",
+    "snapshot_id": "snap-fixture00000001",
+    "total_bytes": 2382
+  },
+  "synthetic": true
+}

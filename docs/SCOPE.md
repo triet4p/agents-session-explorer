@@ -33,7 +33,7 @@ Bảng dưới giữ nguyên nội dung nghiệm thu của [INITIALIZATION §13]
 | P1 | Turn/Episode, chọn leaf, delta attempt; đếm turn lệch <1% so với mốc `stats.db` 329.277 | **Chưa đo; đơn vị xung đột:** §3 gọi 329.277 là *message*, §13 gọi là *turn*. Phải định nghĩa phép đối chiếu trên cùng nguồn/nhánh/kỳ, chỉ rõ record nào là một chu kỳ; nếu không so được, trình chủ dự án, không tự đổi ngưỡng. |
 | P2 | Time analytics; đối chiếu cost một tháng với `stats.db` | **Chưa đo.** Khóa tháng/múi giờ, đơn vị tiền, coverage của usage và cách xử lý thiếu. Tổng thời gian lao động khác hợp khoảng thời gian đồng hồ; chưa có ngưỡng sai số công bố. |
 | P3 | Judge + SLM cho 3.247 message còn lại; chạy lại 0 call model, ablation trên 372 recap | **Chưa đo.** Hai con số gắn mẫu lịch sử. Recap là nhãn tham khảo do model sinh, không phải ground truth độc lập; cache hit chỉ có nghĩa khi input, rule, phiên bản không đổi. |
-| P4 | Export/import, verify, skill-gap join; ≥80% assertion trích được evidence; verify pass 100% | **Chưa đo.** Tách tỷ lệ *trích thành công trên tập ứng viên* khỏi yêu cầu *mọi assertion được nhận* đều có evidence; đây là cách diễn giải đề xuất, cần chốt mẫu số. Không nhận 20% assertion trống. |
+| P4 | Export/import, verify, skill-gap join; ≥80% assertion trích được evidence; verify pass 100% | **Đạt trên pilot OMP đã ghim:** 4/4 ứng viên trích được bằng chứng, 19/19 bản ghi bằng chứng mở lại được, 4/4 assertion đã nhận qua xác minh. Không suy rộng ngoài pilot. |
 
 <a id="next-proofs"></a>
 ## Các phép chứng minh kế tiếp, theo thứ tự phụ thuộc

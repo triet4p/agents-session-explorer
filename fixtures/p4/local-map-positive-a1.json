@@ -1,0 +1,21 @@
+{
+  "aliases": {
+    "src-fixture00000001": {
+      "file_id": 0,
+      "path": "source-positive-a1.jsonl",
+      "sha256": "ebd48f3ad46e451134b11374f127a54c286d866a741171e7bb51edac2bee68e5"
+    }
+  },
+  "schema": "ase-p4-local-sources-v1",
+  "snapshot": {
+    "core_digest": "bcc7096a9a6d9f3dde8f2649a25c2cd680ed3a776463f40e5e9322f21554ff41",
+    "files": [
+      {
+        "file_id": 0,
+        "sha256": "ebd48f3ad46e451134b11374f127a54c286d866a741171e7bb51edac2bee68e5",
+        "size": 2382
+      }
+    ],
+    "snapshot_id": "snap-fixture00000001"
+  }
+}

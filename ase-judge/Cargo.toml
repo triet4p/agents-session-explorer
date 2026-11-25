@@ -1,0 +1,13 @@
+[package]
+name = "ase-judge"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ase-core = { path = "../ase-core" }
+ase-llm = { path = "../ase-llm" }
+ase-work = { path = "../ase-work" }
+rusqlite = { version = "0.43", default-features = false, features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
