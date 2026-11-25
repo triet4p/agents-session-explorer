@@ -25,9 +25,9 @@
 - [~] **T1 — Đồng bộ tài liệu:** README và CHANGELOG đã đối chiếu và commit `e693a37`; SCOPE đã đồng bộ trong worktree nhưng `commit_pending` do chung hunk với thay đổi có sẵn.
 - [x] **T2 — Chuẩn hóa mã:** bỏ tên mốc khỏi mã và schema chưa phát hành, bỏ đường dẫn mặc định phụ thuộc máy và khóa byte fixture khi checkout. Kiểm thử có mục tiêu và smoke CLI đạt; [review R2 PASS](../artifacts/T2/review-c1-r2.md), [checkpoint local](../artifacts/T2/checkpoints/checkpoint-r2.md) tại `88e51ec`. Không push stack hiện tại: commit trung gian vẫn chứa hồ sơ nội bộ đã được loại khỏi cây cuối.
 
-## Sprint tiếp theo
+## Chuẩn hóa cấu trúc mã
 
-**[Sprint 8 — Refactor theo ranh giới nghiệp vụ](sprint-plans/sprint-8.md):** đã lập kế hoạch, chưa triển khai. Tách router/nhóm lệnh trong `ase-cli/src/main.rs` và các file dài đã chọn theo coding conventions, giữ nguyên hành vi bằng đối chiếu baseline/candidate và review độc lập. Mặc định không gọi LLM provider thật; chỉ khi xác minh offline không giải quyết được một nghi vấn cụ thể, tối đa 10 request thật cho cả sprint. Không chạy lại cohort.
+**[Sprint 8 — Refactor theo ranh giới nghiệp vụ](sprint-plans/sprint-8.md) hoàn tất:** đã tách CLI, adapter scan, Judge evaluation, model `ase-task` và bundle export/verify. Cây tích hợp `d435ce5` đạt nghiệm thu offline và [deep review R1 PASS](../artifacts/sprint-8/ASE-S8-T12/deep-review-r1.md). `main.rs` còn 204 dòng; giữ nguyên hành vi trong phạm vi đã đối chiếu. Không gọi LLM provider thật, không chạy lại cohort, không push/tag.
 
 ## Phạm vi các mốc
 
