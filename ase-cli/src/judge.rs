@@ -7,7 +7,7 @@
 
 use ase_core::{err, Result};
 use ase_judge::Scope;
-use crate::{has, opt};
+use crate::cli_option::{has, opt};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};

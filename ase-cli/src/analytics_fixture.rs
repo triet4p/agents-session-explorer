@@ -8,7 +8,7 @@ use ase_core::{err, Result};
 use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
-use crate::opt;
+use crate::cli_option::opt;
 
 // Synthetic producer-shaped OMP journals for a deterministic runtime check. No
 // corpus path, prose or private identifier is written; each file isolates one

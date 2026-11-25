@@ -10,7 +10,8 @@ use ase_postings::publication;
 use ase_work::{JournalProjection, ManifestEntry, Window};
 use std::fs;
 use std::sync::Arc;
-use crate::{index_path, opt};
+use crate::cli_option::opt;
+use crate::index::index_path;
 
 // ---------------------------------------------------------- work projection
 

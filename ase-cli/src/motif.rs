@@ -6,7 +6,9 @@
 //! them.
 
 use crate::cli_option::parse_opt;
-use crate::{has, positionals, require_publication, span_label};
+use crate::cli_option::{has, positionals};
+use crate::index::require_publication;
+use crate::show::span_label;
 use ase_core::{err, NONE, Result};
 use serde_json::{json, Value};
 

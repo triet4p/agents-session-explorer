@@ -7,7 +7,7 @@ use ase_core::{err, Result};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
-use crate::opt;
+use crate::cli_option::opt;
 
 // ----------------------------------------------- explicit attempt delta
 

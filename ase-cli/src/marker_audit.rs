@@ -4,8 +4,11 @@
 //! from raw bytes; marker observations keep generation, span, selector and
 //! block digest provenance without emitting prose text.
 
-use crate::hash_bytes;
-use crate::{emit, has, index_path, require_publication, span_label};
+use crate::cli_option::has;
+use crate::cli_output::emit;
+use crate::index::{index_path, require_publication};
+use crate::open::hash_bytes;
+use crate::show::span_label;
 use ase_core::{err, ProjectionKind, RawStore, Result, NONE};
 use ase_ingest::util::fnv64;
 use ase_index::{FsRawStore, Index};
@@ -15,7 +18,7 @@ use ase_task::MarkerEvidence;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
-use crate::opt;
+use crate::cli_option::opt;
 use std::sync::Arc;
 
 /// Allowlisted prose blocks of one published generation that verify by span

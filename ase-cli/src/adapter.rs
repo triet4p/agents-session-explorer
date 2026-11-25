@@ -4,8 +4,9 @@
 //! library. Selection, sidecar roots, claim serialization and the reopen exit
 //! contract stay in this CLI module; the library owns claim policy.
 
-use crate::cli_option::parse_opt;
-use crate::{emit, has, load_with_publication, opt};
+use crate::cli_option::{has, opt, parse_opt};
+use crate::cli_output::emit;
+use crate::index::load_with_publication;
 use ase_adapter_omp_stock::{
     path_eq, reopen, scan, ClaimsFile, Options as AdapterOptions, StockView, ViewEvent, ViewFile,
 };

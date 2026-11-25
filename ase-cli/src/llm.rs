@@ -12,7 +12,7 @@
 //! fields.
 
 use ase_core::{err, Result};
-use crate::{has, opt};
+use crate::cli_option::{has, opt};
 use serde_json::json;
 
 pub fn run(args: &[String]) -> Result<()> {

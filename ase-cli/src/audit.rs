@@ -3,7 +3,10 @@
 //! Both subjects open the address index directly: no raw span, prose, postings
 //! or model is consulted. Marker auditing lives with the verified prose seam.
 
-use crate::{emit, has, index_path, opt, span_label};
+use crate::cli_option::{has, opt};
+use crate::cli_output::emit;
+use crate::index::index_path;
+use crate::show::span_label;
 use ase_core::{err, Result};
 use ase_index::Index;
 use ase_naming::{SourceRef, Status};

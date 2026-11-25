@@ -15,7 +15,7 @@ use crate::verify::{
     REPRESENTATIVE_POLICY, SELECTOR_VERSION,
 };
 use crate::motif::{motif_target, MotifTarget};
-use crate::require_publication;
+use crate::index::require_publication;
 use ase_core::{err, RawStore, Result};
 use ase_ingest::util::fnv64;
 use ase_index::{sha256_hex, FsRawStore, Index};

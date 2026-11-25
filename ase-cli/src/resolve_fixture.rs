@@ -1,7 +1,7 @@
 //! Synthetic task reconciliation fixtures covering assigned, ambiguous and
 //! unresolved signals, including cross-project tokens and delegation edges.
 
-use crate::opt;
+use crate::cli_option::opt;
 use ase_core::{err, Result};
 use std::fs;
 use std::path::PathBuf;

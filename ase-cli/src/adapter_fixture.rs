@@ -4,7 +4,7 @@
 //! missing-result and conflicting-parent claim shapes plus sidecar handoffs.
 //! No resolver or motif membership is read or written here.
 
-use crate::opt;
+use crate::cli_option::opt;
 use ase_core::{err, Result};
 use serde_json::{json, Value};
 use std::fs;

@@ -15,7 +15,8 @@ use crate::journal_projection::{
     load_work, parse_work_window, project_work_file, read_jsonl, validate_work_projection,
     ProjectedWork, SelectedWork, WorkFile,
 };
-use crate::{emit, has, opt, positional};
+use crate::cli_option::{has, opt, positional};
+use crate::cli_output::emit;
 
 // -------------------------------------------------------- runtime analytics
 

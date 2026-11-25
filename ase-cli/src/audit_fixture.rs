@@ -1,6 +1,6 @@
 //! Synthetic naming and delegation fixtures for metadata-only audits.
 
-use crate::opt;
+use crate::cli_option::opt;
 use ase_core::{err, Result};
 use std::fs;
 use std::path::PathBuf;

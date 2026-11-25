@@ -8,7 +8,8 @@
 //! still come from `ase-llm`.
 
 use ase_core::{err, Result};
-use crate::{llm::llm_expect, opt};
+use crate::cli_option::opt;
+use crate::llm::llm_expect;
 use serde_json::json;
 
 const SMOKE_INSTRUCTION: &str =

@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use crate::audit::{delegation_inputs, naming_sources};
 use crate::marker_audit::{marker_evidence, verified_prose};
-use crate::{has, index_path, load_with_publication, parse_span, positional, span_label};
+use crate::cli_option::{has, positional};
+use crate::index::{index_path, load_with_publication};
+use crate::show::{parse_span, span_label};
 use ase_core::{err, EventIdx, RawStore, Result, NONE};
 use ase_ingest::util::fnv64;
 use ase_index::{FsRawStore, Index};
