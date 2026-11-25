@@ -49,8 +49,8 @@ mod win;
 mod tests;
 
 pub use api::{
-    call, identity, session_id, usage_json, ApiError, ApiIdentity, CallResult,
-    DEFAULT_TIMEOUT_MS, MAX_RESPONSE_BYTES,
+    call, call_diagnostic, identity, session_id, usage_json, ApiError, ApiIdentity, CallOutcome,
+    CallResult, DEFAULT_TIMEOUT_MS, MAX_RESPONSE_BYTES,
 };
 pub use config::{
     apply_edit, capture_env, config_path, load_config, save_config, use_profile, ApiKind,
@@ -71,6 +71,6 @@ pub use resolve::{
 pub use secret::ApiKey;
 pub use url::{validate_endpoint, Endpoint, MAX_ENDPOINT_LEN};
 pub use wire::{
-    AuthStyle, CallSpec, Usage, WireAnswer, WireRequest, WireResponse, PARSE_VERSION, SESSION_HEADER,
-    WIRE_VERSION,
+    AuthStyle, CallSpec, ResponsesDiagnostic, Usage, WireAnswer, WireRequest, WireResponse,
+    PARSE_VERSION, SESSION_HEADER, WIRE_VERSION,
 };

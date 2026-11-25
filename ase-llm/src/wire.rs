@@ -350,6 +350,142 @@ fn text_from_responses(value: &Value) -> Result<String, ApiError> {
     Ok(text)
 }
 
+/// Bounded, non-text structural summary of a Responses envelope.
+///
+/// Only fixed allowlisted codes, presence flags and type names are retained.
+/// No prompt, output text, refusal text, provider reason string, body or key
+/// can reach this struct; it exists for `ase llm smoke` failure diagnostics.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResponsesDiagnostic {
+    /// Top-level `status` mapped to a fixed code.
+    pub status: &'static str,
+    /// `incomplete_details.reason` mapped to a fixed code.
+    pub incomplete_reason: &'static str,
+    /// An output part had type `refusal`; its text is never read.
+    pub refusal_part: bool,
+    /// An output part had type `output_text`; its text is not read here.
+    pub output_text_part: bool,
+    /// The convenience top-level `output_text` field was a nonempty string.
+    pub top_level_output_text: bool,
+    /// Allowlisted `output[].type` values, sorted and deduplicated.
+    pub output_item_types: Vec<&'static str>,
+    /// Allowlisted `output[].content[].type` values, sorted and deduplicated.
+    pub content_part_types: Vec<&'static str>,
+}
+
+impl Default for ResponsesDiagnostic {
+    fn default() -> Self {
+        Self {
+            status: "absent",
+            incomplete_reason: "absent",
+            refusal_part: false,
+            output_text_part: false,
+            top_level_output_text: false,
+            output_item_types: Vec::new(),
+            content_part_types: Vec::new(),
+        }
+    }
+}
+
+fn status_code(value: Option<&Value>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) => match value.as_str() {
+            Some("completed") => "completed",
+            Some("in_progress") => "in_progress",
+            Some("queued") => "queued",
+            Some("incomplete") => "incomplete",
+            Some("failed") => "failed",
+            Some("cancelled") => "cancelled",
+            Some(_) | None => "other",
+        },
+    }
+}
+
+fn reason_code(value: Option<&Value>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) => match value.as_str() {
+            Some("max_output_tokens") => "max_output_tokens",
+            Some("content_filter") => "content_filter",
+            Some(_) | None => "other",
+        },
+    }
+}
+
+fn push_type(types: &mut Vec<&'static str>, code: &'static str) {
+    if !types.contains(&code) {
+        types.push(code);
+    }
+}
+
+fn item_type(value: &str) -> &'static str {
+    match value {
+        "message" => "message",
+        "reasoning" => "reasoning",
+        "function_call" => "function_call",
+        "function_call_output" => "function_call_output",
+        _ => "other",
+    }
+}
+
+fn part_type(value: &str) -> &'static str {
+    match value {
+        "output_text" => "output_text",
+        "refusal" => "refusal",
+        "input_text" => "input_text",
+        _ => "other",
+    }
+}
+
+/// Reads one Responses envelope for smoke diagnostics. `None` means the body
+/// was not a JSON object. The parse policy in `text_from_responses` is
+/// unchanged: this summary never contributes to or alters a typed answer.
+pub fn responses_diagnostic(body: &[u8]) -> Option<ResponsesDiagnostic> {
+    let value: Value = serde_json::from_slice(body).ok()?;
+    let object = value.as_object()?;
+    let mut diagnostic = ResponsesDiagnostic {
+        status: status_code(object.get("status")),
+        incomplete_reason: reason_code(
+            object
+                .get("incomplete_details")
+                .and_then(|details| details.get("reason")),
+        ),
+        ..Default::default()
+    };
+    diagnostic.top_level_output_text = object
+        .get("output_text")
+        .and_then(Value::as_str)
+        .is_some_and(|text| !text.is_empty());
+    if let Some(items) = object.get("output").and_then(Value::as_array) {
+        for item in items {
+            if let Some(kind) = item.get("type").and_then(Value::as_str) {
+                push_type(&mut diagnostic.output_item_types, item_type(kind));
+            }
+            let Some(parts) = item.get("content").and_then(Value::as_array) else {
+                continue;
+            };
+            for part in parts {
+                match part.get("type").and_then(Value::as_str) {
+                    Some("output_text") => {
+                        diagnostic.output_text_part = true;
+                        push_type(&mut diagnostic.content_part_types, "output_text");
+                    }
+                    Some("refusal") => {
+                        diagnostic.refusal_part = true;
+                        push_type(&mut diagnostic.content_part_types, "refusal");
+                    }
+                    Some(kind) => push_type(&mut diagnostic.content_part_types, part_type(kind)),
+                    None => {}
+                }
+            }
+        }
+    }
+    diagnostic.output_item_types.sort_unstable();
+    diagnostic.content_part_types.sort_unstable();
+    Some(diagnostic)
+}
+
 fn text_from_gemini(value: &Value) -> Result<String, ApiError> {
     if let Some(reason) = value
         .get("promptFeedback")

@@ -15,10 +15,11 @@ use std::time::Duration;
 
 use serde_json::json;
 
+use crate::config::ApiKind;
 use crate::credentials::sha256_hex;
 use crate::resolve::{ResolvedProfile, Resolution};
 use crate::wire::{
-    self, CallSpec, Usage, WireAnswer, WIRE_VERSION, PARSE_VERSION,
+    self, CallSpec, ResponsesDiagnostic, Usage, WireAnswer, WIRE_VERSION, PARSE_VERSION,
 };
 
 pub const DEFAULT_TIMEOUT_MS: u64 = 120_000;
@@ -89,6 +90,16 @@ pub struct CallResult {
     pub status: u16,
 }
 
+/// The outcome of one typed call, including bounded context for smoke
+/// failure diagnostics. Ordinary `call` discards that context.
+pub struct CallOutcome {
+    pub result: Result<CallResult, ApiError>,
+    /// HTTP status when a response was received; never a body or header.
+    pub http_status: Option<u16>,
+    /// Bounded Responses envelope summary, captured only for smoke diagnostics.
+    pub responses: Option<ResponsesDiagnostic>,
+}
+
 /// Deterministic session identifier for the Console gateway only. It is
 /// derived from nonsecret profile fields and is never a credential.
 pub fn session_id(profile: &ResolvedProfile) -> String {
@@ -146,36 +157,91 @@ fn classify_status(status: u16) -> Result<(), ApiError> {
     Err(ApiError::status(status))
 }
 
-/// Executes one typed call. No retry, no redirect, no credential forwarding.
-pub fn call(
+fn call_inner(
     resolution: &Resolution,
     spec: &CallSpec<'_>,
     timeout: Duration,
-) -> Result<CallResult, ApiError> {
+    capture_context: bool,
+) -> CallOutcome {
     let profile = &resolution.profile;
     if spec.api != profile.api {
-        return Err(ApiError::Unavailable("api_kind_mismatch".into()));
+        return CallOutcome {
+            result: Err(ApiError::Unavailable("api_kind_mismatch".into())),
+            http_status: None,
+            responses: None,
+        };
     }
     let session = if wire::is_console_gateway(&profile.endpoint) {
         Some(session_id(profile))
     } else {
         None
     };
-    let request = wire::build_request(spec, &profile.endpoint, session.as_deref())?;
-    let outcome = crate::transport::send(&request, &resolution.key, timeout)?;
-    classify_status(outcome.status)?;
-    let parsed = wire::parse_response(spec.api, spec.question_id, &outcome.body)?;
-    Ok(CallResult {
-        answer: parsed.answer,
-        usage: parsed.usage,
-        model: parsed.model,
-        auth_header: request.auth.header_name(),
-        auth_scheme: request.auth.scheme(),
-        body_keys: request.body_keys,
-        effort_sent: request.effort_sent,
-        session_sent: request.session_sent,
-        status: outcome.status,
-    })
+    let request = match wire::build_request(spec, &profile.endpoint, session.as_deref()) {
+        Ok(request) => request,
+        Err(error) => {
+            return CallOutcome {
+                result: Err(error),
+                http_status: None,
+                responses: None,
+            }
+        }
+    };
+    let outcome = match crate::transport::send(&request, &resolution.key, timeout) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            return CallOutcome {
+                result: Err(error),
+                http_status: None,
+                responses: None,
+            }
+        }
+    };
+    let http_status = Some(outcome.status);
+    let responses = if capture_context && spec.api == ApiKind::Responses {
+        wire::responses_diagnostic(&outcome.body)
+    } else {
+        None
+    };
+    let result = classify_status(outcome.status).and_then(|()| {
+        let parsed = wire::parse_response(spec.api, spec.question_id, &outcome.body)?;
+        Ok(CallResult {
+            answer: parsed.answer,
+            usage: parsed.usage,
+            model: parsed.model,
+            auth_header: request.auth.header_name(),
+            auth_scheme: request.auth.scheme(),
+            body_keys: request.body_keys,
+            effort_sent: request.effort_sent,
+            session_sent: request.session_sent,
+            status: outcome.status,
+        })
+    });
+    CallOutcome {
+        result,
+        http_status,
+        responses,
+    }
+}
+
+/// Executes one typed call. No retry, no redirect, no credential forwarding.
+/// No diagnostic context is parsed on this path.
+pub fn call(
+    resolution: &Resolution,
+    spec: &CallSpec<'_>,
+    timeout: Duration,
+) -> Result<CallResult, ApiError> {
+    call_inner(resolution, spec, timeout, false).result
+}
+
+/// Smoke-only entry point: the same one request and typed parse as `call`,
+/// plus bounded failure context. Never retries or re-sends with a different
+/// effort, model or endpoint.
+pub fn call_diagnostic(
+    resolution: &Resolution,
+    spec: &CallSpec<'_>,
+    timeout: Duration,
+) -> CallOutcome {
+    call_inner(resolution, spec, timeout, true)
 }
 
 /// Convenience for report builders: usage as JSON without any body text.
