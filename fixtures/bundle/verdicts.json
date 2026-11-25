@@ -1,0 +1,60 @@
+{
+  "bundle_digest": "sha256:886aac7443e009440fca413678194f98f315c989055456aec84ea146087d0bf6",
+  "bundle_id": "bun-478c2b5fab0c04f3",
+  "bundle_version": "ase-bundle-v1",
+  "generated_at": "2026-11-25T00:00:00Z",
+  "judge": {
+    "judge_id": "synthetic-fixture-judge",
+    "kind": "user"
+  },
+  "schema": "ase-verdicts-v1",
+  "synthetic": true,
+  "verdicts": [
+    {
+      "answer": "variable procedure",
+      "assertion_id": "as-75d4944c65eefc1d",
+      "catalog_key": "procedure:inspect",
+      "catalog_kind": "skill",
+      "evidence_refs": [
+        "ev-49f6e3fcda8e36fa",
+        "ev-7047d567908a63ec",
+        "ev-964cd120e5bd5948",
+        "ev-b70d480a8e27d860"
+      ],
+      "input_identity": "6e3d9d2867056107ecf95e1cff5f653ca087d4188f84c7d9a40ae315be2d47d0",
+      "occurrence_id": "occ-3590456bbe0ab8a0",
+      "question_id": "Q1",
+      "should_codify": true,
+      "waste_score": 0.25
+    },
+    {
+      "answer": "all four calls are essential",
+      "assertion_id": "as-ce7026c937aad725",
+      "catalog_key": "template:four-call",
+      "catalog_kind": "template",
+      "evidence_refs": [
+        "ev-49f6e3fcda8e36fa",
+        "ev-b70d480a8e27d860"
+      ],
+      "input_identity": "6e3d9d2867056107ecf95e1cff5f653ca087d4188f84c7d9a40ae315be2d47d0",
+      "occurrence_id": "occ-3590456bbe0ab8a0",
+      "question_id": "Q2",
+      "should_codify": null,
+      "waste_score": null
+    },
+    {
+      "answer": "not decided by this bundle",
+      "assertion_id": "as-569b9e7aeccb58e3",
+      "catalog_key": null,
+      "catalog_kind": null,
+      "evidence_refs": [
+        "ev-c0d9b69c1f0b21fc"
+      ],
+      "input_identity": "4f825e765616d218dd54f9b25e9c10fbeaa86df31eddf8ba45318c25729adb64",
+      "occurrence_id": "occ-42e03f78f7d60461",
+      "question_id": "Q3",
+      "should_codify": false,
+      "waste_score": 0.1
+    }
+  ]
+}

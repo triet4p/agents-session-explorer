@@ -1,2 +1,7 @@
 # P4 bundle digests and source span offsets bind exact fixture bytes.
 fixtures/p4/** -text
+
+# Synthetic evidence fixtures are pinned by raw byte digests and span offsets.
+# Disable text/line-ending conversion so checkout and archive keep the committed
+# LF bytes even when core.autocrlf or a global text rule is enabled.
+fixtures/bundle/** -text

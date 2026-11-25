@@ -1,0 +1,3 @@
+{"cwd":"C:\\SYNTHETIC\\bundle","id":"bundle-parent","timestamp":"2026-11-02T00:00:00.000Z","title":"synthetic bundle fixture","type":"session","version":3}
+{"customType":"task_dispatch_v1","data":{"attempt_id":"a1","dispatch_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","parent_session_id":"bundle-parent","parent_tool_call_id":"call-alpha","project_id":"Alpha","spawn_index":0,"task_id":"1"},"timestamp":"2026-11-02T00:00:00.000Z","type":"custom"}
+{"customType":"task_dispatch_v1","data":{"attempt_id":"b1","dispatch_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","parent_session_id":"bundle-parent","parent_tool_call_id":"call-beta","project_id":"Beta","spawn_index":1,"task_id":"2"},"timestamp":"2026-11-02T00:00:00.000Z","type":"custom"}

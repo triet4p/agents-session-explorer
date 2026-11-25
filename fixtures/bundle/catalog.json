@@ -1,0 +1,23 @@
+{
+  "catalog_id": "synthetic-fixture-catalog",
+  "completeness": {
+    "skill": true,
+    "template": true
+  },
+  "entries": [
+    {
+      "aliases": ["procedure:variable-inspect"],
+      "entry_id": "skill-inspect",
+      "key": "procedure:inspect",
+      "kind": "skill"
+    },
+    {
+      "aliases": [],
+      "entry_id": "template-four-call",
+      "key": "template:four-call",
+      "kind": "template"
+    }
+  ],
+  "schema": "ase-skill-catalog-v1",
+  "synthetic": true
+}

@@ -1,0 +1,207 @@
+{
+  "denominator": {
+    "excluded_count": 0,
+    "sequences_deduplicated": 0,
+    "sequences_in_family": 2,
+    "sequences_with_occurrence": 2,
+    "tasks_in_family": 2,
+    "tasks_total": 2,
+    "tasks_with_occurrence": 2
+  },
+  "family_id": "fam-1f666e36e11194dd",
+  "motif_id": "mot-eedcafa6f628366f",
+  "occurrences_total": 2,
+  "questions": [
+    {
+      "question_id": "Q1",
+      "text": "Is this sequence a fixed ritual or a variable procedure?"
+    },
+    {
+      "question_id": "Q2",
+      "text": "Which calls are essential and which are incidental?"
+    },
+    {
+      "question_id": "Q3",
+      "text": "Should this repetition be codified as a skill or template under the supplied catalog?"
+    }
+  ],
+  "reference": {
+    "occurrence_id": "occ-3590456bbe0ab8a0"
+  },
+  "representative_policy": "ase-representatives-v1",
+  "representatives": [
+    {
+      "call_count": 4,
+      "evidence": [
+        {
+          "call": {
+            "block_sha256": "sha256:065f548baf8fc84aa1525034aceb86d350f1bfbdfd4672d4a693e599be046ccc",
+            "file_id": 0,
+            "selector": "block-v1|span:392:278|message.content[1]|toolCall",
+            "signature": "t1|",
+            "tool": "t1"
+          },
+          "call_ordinal": 0,
+          "evidence_id": "ev-49f6e3fcda8e36fa",
+          "excerpt": "call[0] tool=t1 sig=t1|\nresult: «absent»",
+          "excerpt_sha256": "sha256:0c43697b80da39880ffe90f33c186b444fd17144c317792a785bcfda022dcec3",
+          "result": {
+            "status": "absent"
+          },
+          "result_lines": 0
+        },
+        {
+          "call": {
+            "block_sha256": "sha256:4ae3acf4eda3926b8aee3aae5354be44eabdd5a5bc90a4b1ad9ec2acc520480f",
+            "file_id": 0,
+            "selector": "block-v1|span:671:284|message.content[1]|toolCall",
+            "signature": "t2|",
+            "tool": "t2"
+          },
+          "call_ordinal": 1,
+          "evidence_id": "ev-b70d480a8e27d860",
+          "excerpt": "call[1] tool=t2 sig=t2|\nresult: «absent»",
+          "excerpt_sha256": "sha256:e1be0d17693ed8aee516904d542624c03a067b74db04e7f1a8f5a026d3ba9032",
+          "result": {
+            "status": "absent"
+          },
+          "result_lines": 0
+        },
+        {
+          "call": {
+            "block_sha256": "sha256:657829cc9e992b27a6317a699c01d25089ed19762c22b9d766ca4d732e61c91a",
+            "file_id": 0,
+            "selector": "block-v1|span:956:284|message.content[1]|toolCall",
+            "signature": "t3|",
+            "tool": "t3"
+          },
+          "call_ordinal": 2,
+          "evidence_id": "ev-7047d567908a63ec",
+          "excerpt": "call[2] tool=t3 sig=t3|\nresult: «absent»",
+          "excerpt_sha256": "sha256:0e2ab7d4d8e0056626a2f6abc67c72e9c54ed65d68fb0ea8c726e57f4535c985",
+          "result": {
+            "status": "absent"
+          },
+          "result_lines": 0
+        },
+        {
+          "call": {
+            "block_sha256": "sha256:77b61528dd2557bad0983ffb1ede0485945491d5203b8f869dc0cdbfa5959924",
+            "file_id": 0,
+            "selector": "block-v1|span:1241:284|message.content[1]|toolCall",
+            "signature": "t4|",
+            "tool": "t4"
+          },
+          "call_ordinal": 3,
+          "evidence_id": "ev-964cd120e5bd5948",
+          "excerpt": "call[3] tool=t4 sig=t4|\nresult: «absent»",
+          "excerpt_sha256": "sha256:26397670c9670cd0a37717e22625ae4ee0612d98fe8829134d1eb309fbd3fee9",
+          "result": {
+            "status": "absent"
+          },
+          "result_lines": 0
+        }
+      ],
+      "input_identity": "6e3d9d2867056107ecf95e1cff5f653ca087d4188f84c7d9a40ae315be2d47d0",
+      "occurrence_id": "occ-3590456bbe0ab8a0",
+      "result_status": "absent",
+      "selection": "earliest",
+      "source_alias": "src-9cf3ffc212f61c7c"
+    },
+    {
+      "call_count": 4,
+      "evidence": [
+        {
+          "call": {
+            "block_sha256": "sha256:77073fd569a90cf32a948d7c1b243ee91e1825b62a708da3ca6841c156b38d66",
+            "file_id": 1,
+            "selector": "block-v1|span:390:275|message.content[1]|toolCall",
+            "signature": "t1|",
+            "tool": "t1"
+          },
+          "call_ordinal": 0,
+          "evidence_id": "ev-c0d9b69c1f0b21fc",
+          "excerpt": "call[0] tool=t1 sig=t1|\nresult: «absent»",
+          "excerpt_sha256": "sha256:0c43697b80da39880ffe90f33c186b444fd17144c317792a785bcfda022dcec3",
+          "result": {
+            "status": "absent"
+          },
+          "result_lines": 0
+        },
+        {
+          "call": {
+            "block_sha256": "sha256:b47bc878f0edf8008654c25df261e4d52cea308bced74ae6394ba939361720ee",
+            "file_id": 1,
+            "selector": "block-v1|span:666:280|message.content[1]|toolCall",
+            "signature": "t2|",
+            "tool": "t2"
+          },
+          "call_ordinal": 1,
+          "evidence_id": "ev-de6863ccd92305be",
+          "excerpt": "call[1] tool=t2 sig=t2|\nresult: «absent»",
+          "excerpt_sha256": "sha256:e1be0d17693ed8aee516904d542624c03a067b74db04e7f1a8f5a026d3ba9032",
+          "result": {
+            "status": "absent"
+          },
+          "result_lines": 0
+        },
+        {
+          "call": {
+            "block_sha256": "sha256:c9c74335907f557efbf8aa681e1aa33c319194061315685891879bce21a64e59",
+            "file_id": 1,
+            "selector": "block-v1|span:947:280|message.content[1]|toolCall",
+            "signature": "t3|",
+            "tool": "t3"
+          },
+          "call_ordinal": 2,
+          "evidence_id": "ev-8ec2bab5a304a826",
+          "excerpt": "call[2] tool=t3 sig=t3|\nresult: «absent»",
+          "excerpt_sha256": "sha256:0e2ab7d4d8e0056626a2f6abc67c72e9c54ed65d68fb0ea8c726e57f4535c985",
+          "result": {
+            "status": "absent"
+          },
+          "result_lines": 0
+        },
+        {
+          "call": {
+            "block_sha256": "sha256:7af8a0f01f373d8b1133b574de8382c5a8a535027a4c21525f820f541eadfbaf",
+            "file_id": 1,
+            "selector": "block-v1|span:1228:280|message.content[1]|toolCall",
+            "signature": "t4|",
+            "tool": "t4"
+          },
+          "call_ordinal": 3,
+          "evidence_id": "ev-3afbc03773e690d5",
+          "excerpt": "call[3] tool=t4 sig=t4|\nresult: «absent»",
+          "excerpt_sha256": "sha256:26397670c9670cd0a37717e22625ae4ee0612d98fe8829134d1eb309fbd3fee9",
+          "result": {
+            "status": "absent"
+          },
+          "result_lines": 0
+        }
+      ],
+      "input_identity": "4f825e765616d218dd54f9b25e9c10fbeaa86df31eddf8ba45318c25729adb64",
+      "occurrence_id": "occ-42e03f78f7d60461",
+      "result_status": "absent",
+      "selection": "latest",
+      "source_alias": "src-9ae59b8cb1ec90cc"
+    }
+  ],
+  "representatives_selected": 2,
+  "representatives_shortfall": false,
+  "schema": "ase-motif-bundle-v1",
+  "signatures": [
+    "t1|flag=B,path=P",
+    "t2|flag=B,path=P",
+    "t3|flag=B,path=P",
+    "t4|flag=B,path=P"
+  ],
+  "support": {
+    "exact": 2,
+    "relaxed": {
+      "0": 2,
+      "1": 2,
+      "2": 2
+    }
+  }
+}

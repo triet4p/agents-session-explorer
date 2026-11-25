@@ -1,0 +1,41 @@
+{
+  "aliases": {
+    "src-9ae59b8cb1ec90cc": {
+      "file_id": 1,
+      "path": "sources/child-beta.jsonl",
+      "sha256": "sha256:71ff1f0b9e5d7440b4bb40d3d5472b381f310ddcbee41c94ace4fbd211816cf4"
+    },
+    "src-9cf3ffc212f61c7c": {
+      "file_id": 0,
+      "path": "sources/child-alpha.jsonl",
+      "sha256": "sha256:656a6d4f29370b229e38c85f7d01f05bd9b1d80dd3c79decac1372abe04f21dd"
+    },
+    "src-d2237e2949180dca": {
+      "file_id": 2,
+      "path": "sources/parent.jsonl",
+      "sha256": "sha256:0cbdd476ab824868d43b47aa98c564c2a7fcd176521a7d5e8a63eba5332d5b7f"
+    }
+  },
+  "schema": "ase-local-sources-v1",
+  "snapshot": {
+    "core_digest": "8cbff6a983c016547ba39e1e2774e17d099dfa543b5608da34e37010ef447bbc",
+    "files": [
+      {
+        "file_id": 0,
+        "sha256": "sha256:656a6d4f29370b229e38c85f7d01f05bd9b1d80dd3c79decac1372abe04f21dd",
+        "size": 1526
+      },
+      {
+        "file_id": 1,
+        "sha256": "sha256:71ff1f0b9e5d7440b4bb40d3d5472b381f310ddcbee41c94ace4fbd211816cf4",
+        "size": 1509
+      },
+      {
+        "file_id": 2,
+        "sha256": "sha256:0cbdd476ab824868d43b47aa98c564c2a7fcd176521a7d5e8a63eba5332d5b7f",
+        "size": 736
+      }
+    ],
+    "snapshot_id": "snap-8cbff6a983c01654"
+  }
+}

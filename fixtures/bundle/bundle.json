@@ -1,0 +1,114 @@
+{
+  "bundle_digest": "sha256:886aac7443e009440fca413678194f98f315c989055456aec84ea146087d0bf6",
+  "bundle_id": "bun-478c2b5fab0c04f3",
+  "bundle_version": "ase-bundle-v1",
+  "citation_limits": {
+    "max_bundle_bytes": 32768,
+    "max_excerpt_bytes_per_call": 512,
+    "max_excerpt_bytes_per_occurrence": 4096,
+    "max_occurrences_per_motif": 5,
+    "max_result_line_bytes": 160,
+    "max_result_lines": 3
+  },
+  "created_by": "ase-export",
+  "engine": {
+    "binary_sha256": "sha256:1c0ee9c65c2629ba8b2d7d82f75548444d842b7dd8789965c19fee9c2a36e3ed",
+    "evidence_render": "ase-evidence-md-v1",
+    "name": "ase",
+    "questions_render": "ase-questions-md-v1",
+    "redaction_policy": "ase-redact-v1",
+    "rule_versions": {
+      "callsig": "callsig-v1",
+      "motif_alignment": "motif-align-v1",
+      "motif_dedupe": "seq-text-v1",
+      "projection": "block-v1"
+    }
+  },
+  "motifs": [
+    {
+      "evidence_path": "motifs/mot-eedcafa6f628366f/evidence.md",
+      "evidence_sha256": "sha256:2c731a64be3e176057780593ba74f8372f8d39596c50e912d940bf52857474c2",
+      "motif_id": "mot-eedcafa6f628366f",
+      "motif_path": "motifs/mot-eedcafa6f628366f/motif.json",
+      "motif_sha256": "sha256:2c3c15d6ef919c4be1e3e248cc7274373ac8da71e1aefc932761cd45289e6cb4",
+      "questions_path": "motifs/mot-eedcafa6f628366f/questions.md",
+      "questions_sha256": "sha256:4755a0ee86e7d81c67784cd8443b3cbdbbfc6425a8809241f46f423fffdca4e5"
+    }
+  ],
+  "query": {
+    "config": {
+      "band": 16,
+      "family": {
+        "k_max": 5,
+        "k_min": 3,
+        "tau": 0.5
+      },
+      "max_gap": 2,
+      "max_substitutions": 2,
+      "min_tasks": 2,
+      "null_permutations": 64,
+      "null_seed": "11400714819323198485"
+    },
+    "dedupe_rule": {
+      "name": "motif-sequence-text",
+      "version": "seq-text-v1"
+    },
+    "query_result_digest": "7e98c83789c62fed76ed7961b73509cc5059c2cc01c2151b2b5f10e90d6871cb",
+    "rule": {
+      "name": "motif-alignment",
+      "version": "motif-align-v1"
+    }
+  },
+  "redaction": {
+    "allowed_fields": [
+      "tool name",
+      "callsig-v1 argument signature",
+      "first N result text lines after redaction"
+    ],
+    "forbidden": [
+      "real paths",
+      "alias-to-source mapping",
+      "raw tool output",
+      "thinking or system text",
+      "verdicts",
+      "session identifiers"
+    ],
+    "markers": [
+      "«url»",
+      "«path»",
+      "«email»",
+      "«secret»",
+      "«token»",
+      "«absent»",
+      "«nontext»",
+      "«empty»"
+    ],
+    "policy": "ase-redact-v1"
+  },
+  "representative_policy": "ase-representatives-v1",
+  "schema": "ase-bundle-v1",
+  "snapshot": {
+    "core_digest": "8cbff6a983c016547ba39e1e2774e17d099dfa543b5608da34e37010ef447bbc",
+    "file_count": 3,
+    "files": [
+      {
+        "file_id": 0,
+        "sha256": "sha256:656a6d4f29370b229e38c85f7d01f05bd9b1d80dd3c79decac1372abe04f21dd",
+        "size": 1526
+      },
+      {
+        "file_id": 1,
+        "sha256": "sha256:71ff1f0b9e5d7440b4bb40d3d5472b381f310ddcbee41c94ace4fbd211816cf4",
+        "size": 1509
+      },
+      {
+        "file_id": 2,
+        "sha256": "sha256:0cbdd476ab824868d43b47aa98c564c2a7fcd176521a7d5e8a63eba5332d5b7f",
+        "size": 736
+      }
+    ],
+    "provider": "omp",
+    "snapshot_id": "snap-8cbff6a983c01654",
+    "total_bytes": 3771
+  }
+}
