@@ -1,8 +1,8 @@
 //! Leaf-aware Turn/Episode projection for one OMP journal.
 //!
-//! The unit and branch rule are the locked Sprint-4 T1 reference
-//! (`s4t1-turn-v1`): a turn is an assistant `message` entry carrying a
-//! `message.usage` object; the active leaf is the graph leaf with the greatest
+//! The unit and branch rule are the released reference identifier in
+//! `COMPATIBLE_REFERENCE_RULE`: a turn is an assistant `message` entry carrying
+//! a `message.usage` object; the active leaf is the graph leaf with the greatest
 //! `(entry timestamp, ordinal)`; the active path walks `parentId` links.
 //! Episodes are runs of active-path turns between user boundaries.
 //!
@@ -368,9 +368,9 @@ pub fn project_bytes(opts: &ProjectOptions<'_>, bytes: &[u8]) -> ase_core::Resul
         turn_seq.insert(*index, seq as u32);
     }
 
-    // P2 runtime facts ride on the same parse and the same P1 turn evidence.
+    // Runtime facts ride on the same parse and the same turn evidence.
     // `on_active_leaf` is the locked leaf path, so all-branch vs leaf
-    // reconciliation cannot drift from the P1 projection.
+    // reconciliation cannot drift from the projection.
     let runtime: Vec<RuntimeTurn> = all_turns
         .iter()
         .map(|index| {

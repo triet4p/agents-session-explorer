@@ -1,4 +1,4 @@
-//! P0a core types and seams.
+//! Core types and seams.
 //!
 //! This crate deliberately contains no parsing, I/O, SQLite, model or network
 //! dependency. It is the shared vocabulary between the source/decoder, the
@@ -133,7 +133,7 @@ impl Role {
     }
 }
 
-/// The single currency of P0a. `off`/`len` are in the coordinate system of the
+/// The single currency of the address layer. `off`/`len` are in the coordinate system of the
 /// owning file (see `Encoding::coordinate`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SpanRef {

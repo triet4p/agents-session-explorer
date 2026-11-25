@@ -1,7 +1,7 @@
-//! P2 runtime analytics over the locked P1 projection.
+//! Runtime analytics over the locked Turn/Episode projection.
 //!
 //! This layer does not re-decide leaf membership, re-price a cost, or read
-//! `stats.db`. It consumes the same indexed bytes and the same P1 turn/leaf
+//! `stats.db`. It consumes the same indexed bytes and the same turn/leaf
 //! selection, then reports nominal stored cost, duration, clock-interval
 //! union and time-to-first-token with explicit coverage. A missing producer
 //! field stays missing: it is counted in coverage and excluded from sums,
@@ -75,7 +75,7 @@ pub struct BucketStats {
 }
 
 /// Half-open, `message.timestamp`-scoped sums. `BucketStats` above stays the
-/// complete-branch view used by the P1 reconciliation; this view excludes
+/// complete-branch view used by the reconciliation; this view excludes
 /// turns outside the period window so a scoped report is a period figure.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PeriodBucket {
@@ -157,7 +157,7 @@ pub struct AnalyticsReport {
     pub contract: AnalyticsContract,
 }
 
-/// One reopenable analytics row: the P1 projection plus explicit project
+/// One reopenable analytics row: the Turn/Episode projection plus explicit project
 /// provenance. Runtime facts live in `projection.runtime`, so there is one
 /// evidence set and one source of leaf truth.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -441,17 +441,17 @@ pub fn aggregate(rows: &[JournalAnalytics]) -> AnalyticsReport {
         period,
         reconciliation: recon,
         contract: AnalyticsContract {
-            consumer: "ASE-S5-T3".to_string(),
+            consumer: "ase-analytics".to_string(),
             unit: "one assistant message carrying usage = one API call".to_string(),
             stored_amount_only: true,
             repricing: "none; nominal producer-catalog amount read from usage.cost.total".to_string(),
             stats_db_dependency: "none".to_string(),
-            branch_rule: "P1 s4t1-turn-v1 active leaf; all and abandoned reported beside leaf".to_string(),
+            branch_rule: "active leaf per the released compatibility rule; all and abandoned reported beside leaf".to_string(),
             duration_vs_clock:
                 "duration = exact fixed-point sum of message.duration in ns; clock = union of [message.timestamp, message.completedAt)".to_string(),
             missing_value_policy:
                 "missing cost/duration/ttft/clock/model are counted in coverage and excluded from sums; never zero-filled".to_string(),
-            reopen: "runtime facts verify against the same generation-pinned P1 evidence spans".to_string(),
+            reopen: "runtime facts verify against the same generation-pinned turn evidence spans".to_string(),
         },
     }
 }
@@ -490,7 +490,7 @@ mod tests {
 
     fn head(id: &str, ts: &str) -> String {
         format!(
-            "{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"{ts}\",\"cwd\":\"C:\\\\SYNTHETIC\\\\s5t2\",\"title\":\"synthetic runtime analytics fixture\"}}\n"
+            "{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"{ts}\",\"cwd\":\"C:\\\\SYNTHETIC\\\\analytics\",\"title\":\"synthetic runtime analytics fixture\"}}\n"
         )
     }
 
@@ -664,7 +664,7 @@ mod tests {
         let mut journal = head("gaps", "2026-10-03T00:00:00.000Z");
         journal.push_str(&user("u1", None, "2026-10-03T00:00:01.000Z"));
         // Assistant with no usage is not a turn; it lowers coverage only via
-        // P1's assistant_no_usage count, never by pretending a zero cost.
+        // the projection's assistant_no_usage count, never by pretending a zero cost.
         journal.push_str(&format!("{{\"type\":\"message\",\"id\":\"n1\",\"parentId\":\"u1\",\"timestamp\":\"2026-10-03T00:00:02.000Z\",\"message\":{{\"role\":\"assistant\",\"content\":[{{\"type\":\"text\",\"text\":\"synthetic\"}}]}}}}\n"));
         journal.push_str(&turn("c1", "n1", "2026-10-03T00:00:03.000Z", Some("model-d"),
             Some(1_790_983_203_000), None, None, None, None, true));

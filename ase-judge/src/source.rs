@@ -1,4 +1,4 @@
-//! Reopenable OMP journal projection for the P3 decision unit.
+//! Reopenable OMP journal projection for the decision unit.
 //!
 //! The leaf and active-path rule come from `ase-work`'s locked
 //! `turn-episode-v1` projection; this module only adds the human/no-prose
@@ -180,7 +180,7 @@ impl Journal {
                 file_id: 0,
                 path: rel_path,
                 source_id: rel_path,
-                generation: "ase-s6-pin",
+                generation: "ase-judge-pin",
                 sha256: &sha256,
                 event_base: 0,
                 explicit_leaf: None,

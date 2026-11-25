@@ -200,7 +200,7 @@ fn claims_of<'a>(report: &'a Report, layer: &str, state: &str) -> Vec<&'a Claim>
 #[test]
 fn matching_case_confirms_link_and_label_and_repo_workspace() {
     let parent = PARENT.to_string();
-    let child = format!("{CHILD_DIR}/S3T1A1.jsonl");
+    let child = format!("{CHILD_DIR}/T1A1.jsonl");
     let mock = Mock::new(
         "gen-1",
         vec![
@@ -208,22 +208,22 @@ fn matching_case_confirms_link_and_label_and_repo_workspace() {
                 PARENT,
                 vec![
                     session("p", "C:\\SYN\\demo", None),
-                    task_call("call-7", &["S3T1A1"], "Target: S3-T1 attempt 1"),
-                    result("call-7", "Spawned agent `S3T1A1` (job `S3T1A1`)."),
+                    task_call("call-7", &["T1A1"], "Target: W1a attempt 1"),
+                    result("call-7", "Spawned agent `T1A1` (job `T1A1`)."),
                 ],
             ),
             (
                 &child,
                 vec![
                     session("p", "C:\\SYN\\demo", Some(&parent)),
-                    json!({"type":"message","message":{"role":"user","content":[{"type":"text","text":"Target: S3-T1 attempt 1"}]}}),
+                    json!({"type":"message","message":{"role":"user","content":[{"type":"text","text":"Target: W1a attempt 1"}]}}),
                 ],
             ),
         ],
     )
     .with_sidecar(
-        "C:/SYN/root/2026-01-01T00-00-00-000Z_p/S3T1A1.md",
-        "Handoff\n- task_id: S3-T1\n- attempt_id: A1\n",
+        "C:/SYN/root/2026-01-01T00-00-00-000Z_p/T1A1.md",
+        "Handoff\n- task_id: W1a\n- attempt_id: A1\n",
     );
 
     let report = scan(&mock, &Options { read_sidecars: true, ..Options::default() }).unwrap();
@@ -250,8 +250,8 @@ fn matching_case_confirms_link_and_label_and_repo_workspace() {
 #[test]
 fn two_calls_with_two_children_are_multi_task_not_conflict() {
     let parent = PARENT.to_string();
-    let c1 = format!("{CHILD_DIR}/S3T1A1.jsonl");
-    let c2 = format!("{CHILD_DIR}/S3T2A1.jsonl");
+    let c1 = format!("{CHILD_DIR}/T1A1.jsonl");
+    let c2 = format!("{CHILD_DIR}/T2A1.jsonl");
     let mock = Mock::new(
         "gen-1",
         vec![
@@ -259,10 +259,10 @@ fn two_calls_with_two_children_are_multi_task_not_conflict() {
                 PARENT,
                 vec![
                     session("p", "C:\\SYN\\demo", None),
-                    task_call("call-7", &["S3T1A1"], "Target: S3-T1 attempt 1"),
-                    result("call-7", "Spawned agent `S3T1A1` (job `S3T1A1`)."),
-                    task_call("call-9", &["S3T2A1"], "Target: S3-T2 attempt 1"),
-                    result("call-9", "Spawned agent `S3T2A1` (job `S3T2A1`)."),
+                    task_call("call-7", &["T1A1"], "Target: W1a attempt 1"),
+                    result("call-7", "Spawned agent `T1A1` (job `T1A1`)."),
+                    task_call("call-9", &["T2A1"], "Target: W2a attempt 1"),
+                    result("call-9", "Spawned agent `T2A1` (job `T2A1`)."),
                 ],
             ),
             (c1.as_str(), vec![session("p", "C:\\SYN\\demo", Some(&parent))]),
@@ -283,7 +283,7 @@ fn missing_child_is_missing_not_candidate_or_error() {
             PARENT,
             vec![
                 session("p", "C:\\SYN\\demo", None),
-                task_call("call-7", &["NoChild"], "Target: S3-T9 attempt 1"),
+                task_call("call-7", &["NoChild"], "Target: W9a attempt 1"),
             ],
         )],
     );
@@ -295,7 +295,7 @@ fn missing_child_is_missing_not_candidate_or_error() {
 
 #[test]
 fn parent_result_and_child_header_disagreement_keeps_both_as_conflict() {
-    let child = format!("{CHILD_DIR}/S3T1A1.jsonl");
+    let child = format!("{CHILD_DIR}/T1A1.jsonl");
     let mock = Mock::new(
         "gen-1",
         vec![
@@ -303,8 +303,8 @@ fn parent_result_and_child_header_disagreement_keeps_both_as_conflict() {
                 PARENT,
                 vec![
                     session("p", "C:\\SYN\\demo", None),
-                    task_call("call-7", &["S3T1A1"], "Target: S3-T1 attempt 1"),
-                    result("call-7", "Spawned agent `S3T1A1` (job `S3T1A1`)."),
+                    task_call("call-7", &["T1A1"], "Target: W1a attempt 1"),
+                    result("call-7", "Spawned agent `T1A1` (job `T1A1`)."),
                 ],
             ),
             (
@@ -326,7 +326,7 @@ fn parent_result_and_child_header_disagreement_keeps_both_as_conflict() {
 
 #[test]
 fn opposing_parent_and_child_labels_conflict_without_tie_break() {
-    let child = format!("{CHILD_DIR}/S3T2A1.jsonl");
+    let child = format!("{CHILD_DIR}/T2A1.jsonl");
     let mock = Mock::new(
         "gen-1",
         vec![
@@ -334,8 +334,8 @@ fn opposing_parent_and_child_labels_conflict_without_tie_break() {
                 PARENT,
                 vec![
                     session("p", "C:\\SYN\\demo", None),
-                    task_call("call-7", &["S3T1A1"], "Target: S3-T1 attempt 1"),
-                    result("call-7", "Spawned agent `S3T2A1` (job `S3T2A1`)."),
+                    task_call("call-7", &["T1A1"], "Target: W1a attempt 1"),
+                    result("call-7", "Spawned agent `T2A1` (job `T2A1`)."),
                 ],
             ),
             (child.as_str(), vec![session("p", "C:\\SYN\\demo", Some(PARENT))]),
@@ -356,7 +356,7 @@ fn opposing_parent_and_child_labels_conflict_without_tie_break() {
 
 #[test]
 fn edited_raw_marks_reopened_claim_stale() {
-    let child = format!("{CHILD_DIR}/S3T1A1.jsonl");
+    let child = format!("{CHILD_DIR}/T1A1.jsonl");
     let mut mock = Mock::new(
         "gen-1",
         vec![
@@ -364,8 +364,8 @@ fn edited_raw_marks_reopened_claim_stale() {
                 PARENT,
                 vec![
                     session("p", "C:\\SYN\\demo", None),
-                    task_call("call-7", &["S3T1A1"], "Target: S3-T1 attempt 1"),
-                    result("call-7", "Spawned agent `S3T1A1` (job `S3T1A1`)."),
+                    task_call("call-7", &["T1A1"], "Target: W1a attempt 1"),
+                    result("call-7", "Spawned agent `T1A1` (job `T1A1`)."),
                 ],
             ),
             (child.as_str(), vec![session("p", "C:\\SYN\\demo", Some(PARENT))]),
@@ -386,7 +386,7 @@ fn edited_raw_marks_reopened_claim_stale() {
         .id;
     let raw = mock.bytes(parent_file).unwrap();
     let mut edited = raw.to_vec();
-    let pos = edited.windows(4).position(|w| w == b"S3-T").unwrap();
+    let pos = edited.windows(4).position(|w| w == b"W1a ").unwrap();
     edited[pos] = b'X';
     mock.replace_bytes(parent_file, edited);
     let reopened = reopen(&mock, &claims, None).unwrap();
@@ -402,7 +402,7 @@ fn generation_mismatch_never_reads_other_generation() {
             PARENT,
             vec![
                 session("p", "C:\\SYN\\demo", None),
-                task_call("call-7", &["S3T1A1"], "Target: S3-T1 attempt 1"),
+                task_call("call-7", &["T1A1"], "Target: W1a attempt 1"),
             ],
         )],
     );

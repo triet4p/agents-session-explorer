@@ -1,4 +1,4 @@
-//! P0b derived layer: contentless SQLite FTS5 prose postings and CallSig
+//! Derived search layer: contentless SQLite FTS5 prose postings and CallSig
 //! shingles pinned to one published address generation.
 //!
 //! This crate never imports a model, network or renderer. It reads metadata

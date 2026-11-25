@@ -1,4 +1,4 @@
-//! Offline P3 evaluation orchestration: baseline, SLM boundary and Judge on a
+//! Offline evaluation orchestration: baseline, SLM boundary and Judge on a
 //! pinned, reopenable cohort projection.
 //!
 //! The run reads a pin (manifest + units + private path map), re-opens every
@@ -29,10 +29,10 @@ use crate::runner::{self, ApiStage, CallOutcome, RunnerConfig, StageModel};
 use crate::source::{CorpusSource, EvidenceVerifier};
 use crate::store::{CallRecord, InsertOutcome, RunRecord, Store};
 
-pub const EVAL_SCHEMA: &str = "ase-s6-t2-eval-run/v1";
-pub const VERIFY_SCHEMA: &str = "ase-s6-t2-verify/v1";
-pub const REPORT_SCHEMA: &str = "ase-s6-t2-store-report/v1";
-pub const FIXTURE_SCHEMA: &str = "ase-s6-t2-contract-fixture/v1";
+pub const EVAL_SCHEMA: &str = "ase-judge-eval-run/v1";
+pub const VERIFY_SCHEMA: &str = "ase-judge-verify/v1";
+pub const REPORT_SCHEMA: &str = "ase-judge-store-report/v1";
+pub const FIXTURE_SCHEMA: &str = "ase-judge-contract-fixture/v1";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scope {
@@ -194,7 +194,7 @@ fn read_file_sha256(path: &Path, what: &str) -> Result<String> {
 }
 
 fn heritage_unit_id(session_id: &str) -> String {
-    sha256_hex(format!("ase-s6-v1-unit\u{0}{session_id}").as_bytes())
+    sha256_hex(format!("ase-judge-v1-unit\u{0}{session_id}").as_bytes())
 }
 
 impl Pin {
@@ -628,7 +628,7 @@ pub fn run(options: &EvalOptions) -> Result<RunReport> {
     let mut store = Store::open(&options.store)?;
     let config_sha256 = sha256_hex(
         &serde_json::to_vec(&json!({
-            "schema": "ase-s6-t2-run-config/v1",
+            "schema": "ase-judge-run-config/v1",
             "manifest_sha256": pin.manifest_sha256,
             "units_sha256": pin.units_sha256,
             "private_sha256": pin.private_sha256,
@@ -1052,7 +1052,7 @@ pub fn run(options: &EvalOptions) -> Result<RunReport> {
         verification_only: options.verification_only,
         scope: options.scope.as_str().to_string(),
         pin: PinReport {
-            source: "ASE-S6-T1 pinned cohort",
+            source: "pinned cohort",
             manifest_sha256: pin.manifest_sha256,
             units_sha256: pin.units_sha256,
             private_sha256: pin.private_sha256,
@@ -1297,7 +1297,7 @@ pub fn show(
         })
         .collect();
     Ok(json!({
-        "schema": "ase-s6-t2-assertions/v1",
+        "schema": "ase-judge-assertions/v1",
         "assertions": assertions,
         "count": assertions.len(),
         "model_calls": 0,
@@ -1381,7 +1381,7 @@ pub fn write_fixture(out_dir: &Path) -> Result<Value> {
     )
     .map_err(|e| err(format!("write fixture units: {e}")))?;
     let private = json!({
-        "schema": "ase-s6-t1-private-manifest/v1",
+        "schema": "ase-judge-private-manifest/v1",
         "rows": [{"ordinal": 0, "rel_path": rel_path, "session_id": journal.session_id}],
     });
     let private_path = out_dir.join("private.json");
@@ -1393,11 +1393,11 @@ pub fn write_fixture(out_dir: &Path) -> Result<Value> {
     )
     .map_err(|e| err(format!("write fixture private: {e}")))?;
     let manifest_body = json!({
-        "schema": "ase-s6-t2-contract-fixture-manifest/v1",
+        "schema": "ase-judge-contract-fixture-manifest/v1",
         "rows": [{"ordinal": 0, "size": journal.size, "sha256": journal.sha256}],
     });
     let manifest = json!({
-        "schema": "ase-s6-t2-contract-fixture-manifest/v1",
+        "schema": "ase-judge-contract-fixture-manifest/v1",
         "rows": [{"ordinal": 0, "size": journal.size, "sha256": journal.sha256}],
         "manifest_sha256": sha256_hex(
             &serde_json::to_vec(&manifest_body).map_err(|e| err(format!("fixture manifest: {e}")))?,

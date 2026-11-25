@@ -95,7 +95,7 @@ struct CallItem {
 }
 
 /// Emit k=3..5 windows from one linear call sequence. Every row records the
-/// constituent event/selector pairs so P0d can reopen each item independently.
+/// constituent event/selector pairs so each item can be reopened independently.
 fn flush_sequence(
     db: &Connection,
     generation: &str,

@@ -1,4 +1,4 @@
-//! P0a address-only index: file/ordinal/offset/len plus verbatim source
+//! Address-only index: file/ordinal/offset/len plus verbatim source
 //! metadata. No postings, no text, no model output (INITIALIZATION.md §7.2).
 
 pub mod builder;

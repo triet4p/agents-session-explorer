@@ -1,4 +1,4 @@
-//! Versioned assertion vocabulary for the P3 offline evaluation layer.
+//! Versioned assertion vocabulary for the offline evaluation layer.
 //!
 //! An assertion is a model or rule judgement about one adjacent pair of human
 //! user messages on the active graph leaf of one pinned journal. It is *not* a
@@ -207,7 +207,7 @@ impl Assertion {
     /// Digest of the decision input before any Judge candidate context.
     pub fn base_input_sha256(&self) -> String {
         sha256_hex(&canonical(&json!({
-            "schema": "ase-s6-decision-input/v1",
+            "schema": "ase-judge-decision-input/v1",
             "unit_id": self.unit_id,
             "decision_index": self.decision_index,
             "render_version": INPUT_RENDER_VERSION,
@@ -236,7 +236,7 @@ impl Assertion {
             return self.base_input_sha256();
         }
         sha256_hex(&canonical(&json!({
-            "schema": "ase-s6-judge-input/v1",
+            "schema": "ase-judge-input/v1",
             "base_input_sha256": self.base_input_sha256(),
             "context": self.context.clone().unwrap_or(Value::Null),
             "prompt_version": self.rule_version,
@@ -246,7 +246,7 @@ impl Assertion {
     /// Span/input-based cache key. Never contains a whole-journal digest.
     pub fn cache_key(&self) -> String {
         sha256_hex(&canonical(&json!({
-            "schema": "ase-s6-assertion-cache/v1",
+            "schema": "ase-judge-assertion-cache/v1",
             "input_sha256": self.input_sha256(),
             "generator": self.generator.as_str(),
             "rule_version": self.rule_version,
@@ -260,7 +260,7 @@ impl Assertion {
     /// Content identity of the assertion itself, independent of the run.
     pub fn assertion_id(&self) -> String {
         sha256_hex(&canonical(&json!({
-            "schema": "ase-s6-assertion/v1",
+            "schema": "ase-judge-assertion/v1",
             "unit_id": self.unit_id,
             "decision_index": self.decision_index,
             "generator": self.generator.as_str(),

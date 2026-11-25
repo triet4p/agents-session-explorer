@@ -1,11 +1,11 @@
-//! P1 work reconstruction: leaf-aware OMP Turn/Episode projection with
+//! Work reconstruction: leaf-aware OMP Turn/Episode projection with
 //! reopenable evidence.
 //!
 //! The projection is derived from exact source bytes addressed by the ASE
 //! address index. It is task-agnostic and never writes resolver or motif
 //! membership. `project` produces the selected branch and episodes;
 //! `reopen` re-reads every evidence span and recomputes the projection;
-//! `compare` aligns product rows with the independent T1 reference by exact
+//! `compare` aligns product rows with the independent reference by exact
 //! file digest and reports per-journal differences before aggregation.
 //! `analytics` aggregates the stored runtime facts from that same projection
 //! into nominal-cost, duration, clock-coverage and latency reports without

@@ -159,7 +159,7 @@ impl Index {
         Ok(SessionView { idx, rec: self.session_rec(idx)?, index: self })
     }
 
-    /// Exact lookup by source coordinate. Spans are unique per line in P0a.
+    /// Exact lookup by source coordinate. Spans are unique per line.
     pub fn event_at(&self, span: SpanRef) -> Result<Option<u32>> {
         let f = self.file(span.file)?;
         let mut lo = f.event_start() as usize;
@@ -217,7 +217,7 @@ impl Index {
         out
     }
 
-    /// Events in a session, filtered by recorded session index. P0a files hold
+    /// Events in a session, filtered by recorded session index. Address files hold
     /// one session each, but the filter keeps this correct if that changes.
     pub fn session_events(&self, idx: u32) -> Result<Vec<u32>> {
         let s = self.session(idx)?;

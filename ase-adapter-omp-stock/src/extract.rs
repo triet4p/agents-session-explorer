@@ -4,6 +4,8 @@
 //! claim layer needs, together with the byte offset inside the supplied block
 //! so evidence points at the exact occurrence.
 
+// Producer cue words, including "sprint", stay because historic journals use
+// them; they describe external task markers, not this project's plan names.
 const CONTEXT_KEYWORDS: &[&str] = &[
     "task", "attempt", "sprint", "handoff", "task_id", "target", "ticket", "work item",
 ];
@@ -68,7 +70,7 @@ fn segments_ok(s: &str) -> bool {
         return false;
     }
     // Every segment is an identifier-like run; at least one carries a letter
-    // and one carries a digit, and at least one segment mixes both (S3, T1).
+    // and one carries a digit, and at least one segment mixes both (A1, T1).
     let letters = parts.iter().any(|p| has_upper(p) || p.bytes().any(|b| b.is_ascii_lowercase()));
     let digits = parts.iter().any(|p| has_digit(p));
     let mixed = parts.iter().any(|p| has_upper(p) && has_digit(p));
@@ -76,7 +78,7 @@ fn segments_ok(s: &str) -> bool {
 }
 
 fn short_label_ok(s: &str) -> bool {
-    // P0a, P1b, S3a style: a short prefix, digits, one optional lowercase
+    // A1a, B12b, C3a style: a short prefix, digits, one optional lowercase
     // suffix. Rejects FP16/BF16 because those have no uppercase after digits
     // and more than two digits.
     let bytes = s.as_bytes();
@@ -98,7 +100,7 @@ fn short_label_ok(s: &str) -> bool {
         return false;
     }
     if i >= bytes.len() {
-        // A no-separator label must carry a lowercase suffix (P0a, P0c);
+        // A no-separator label must carry a lowercase suffix (A1a, B2c);
         // uppercase+digit abbreviations such as A02/EG4 are too generic.
         return false;
     }
@@ -458,13 +460,13 @@ mod tests {
 
     #[test]
     fn extracts_structured_task_ids_and_rejects_technical_tokens() {
-        let text = "Target: ASE-S3-T1 attempt A1. Use SHA-256 and colour E2F2E9; P0a handoff.";
+        let text = "Target: W1a attempt A1. Use SHA-256 and colour E2F2E9; B3a handoff.";
         let tokens: Vec<String> = extract_task_tokens(text)
             .into_iter()
             .map(|t| t.token)
             .collect();
-        assert!(tokens.contains(&"ASE-S3-T1".to_string()));
-        assert!(tokens.contains(&"P0a".to_string()));
+        assert!(tokens.contains(&"W1a".to_string()));
+        assert!(tokens.contains(&"B3a".to_string()));
         assert!(!tokens.contains(&"SHA-256".to_string()));
         assert!(!tokens.contains(&"E2F2E9".to_string()));
     }

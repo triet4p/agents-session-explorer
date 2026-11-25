@@ -1,6 +1,6 @@
-//! Deterministic no-model baseline for the P3 segmentation decision.
+//! Deterministic no-model baseline for the segmentation decision.
 //!
-//! The rule order follows the frozen `ase-s6-t1-rubric/v1` priorities for the
+//! The rule order follows the frozen `ase-judge-rubric/v1` priorities for the
 //! signals a lexical baseline can actually observe: explicit task reset or
 //! hand-off, an independent named deliverable, same-deliverable refinement,
 //! acknowledgement-only messages, then abstention. Topic-change inference and

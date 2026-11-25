@@ -1,4 +1,4 @@
-//! P0d-2 synthetic fixture: bounded alignment, task-deduplicated support,
+//! Synthetic motif fixture: bounded alignment, task-deduplicated support,
 //! recorded denominator/exclusions, a deterministic null model and
 //! per-occurrence evidence reopening.
 //!
@@ -34,7 +34,7 @@ const M_E1: &str = "e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1";
 const M_D2: &str = "d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2";
 const M_F2: &str = "f2f2f2f2-f2f2-4f2f-8f2f-f2f2f2f2f2f2";
 
-const PARENT_SESSION: &str = "p0d2-parent";
+const PARENT_SESSION: &str = "motif-alpha-parent";
 
 struct TaskSpec {
     project: &'static str,
@@ -50,43 +50,43 @@ struct TaskSpec {
 // no call sequence at all.
 const TASKS: &[TaskSpec] = &[
     TaskSpec {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_A1,
         task: "1",
         attempt: "a1",
-        session_id: "p0d2-child-1-a1",
+        session_id: "motif-alpha-child-1-a1",
         tools: &["t1", "t2", "t3", "t4"],
     },
     TaskSpec {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_A2,
         task: "1",
         attempt: "a2",
-        session_id: "p0d2-child-1-a2",
+        session_id: "motif-alpha-child-1-a2",
         tools: &["t1", "t2", "x1", "t3", "t4"],
     },
     TaskSpec {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_B1,
         task: "2",
         attempt: "b1",
-        session_id: "p0d2-child-2-b1",
+        session_id: "motif-alpha-child-2-b1",
         tools: &["t1", "t2", "y1", "t3", "t4"],
     },
     TaskSpec {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_C1,
         task: "3",
         attempt: "c1",
-        session_id: "p0d2-child-3-c1",
+        session_id: "motif-alpha-child-3-c1",
         tools: &["t1", "t2", "z1", "t4"],
     },
     TaskSpec {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_E1,
         task: "9",
         attempt: "a1",
-        session_id: "p0d2-child-9-a1",
+        session_id: "motif-alpha-child-9-a1",
         tools: &[],
     },
 ];
@@ -96,43 +96,43 @@ const TASKS: &[TaskSpec] = &[
 // shared by two projects. Only the same-task duplicate may be deduped.
 const DEDUPE_TASKS: &[TaskSpec] = &[
     TaskSpec {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_A1,
         task: "1",
         attempt: "a1",
-        session_id: "p0d2-child-1-a1",
+        session_id: "motif-alpha-child-1-a1",
         tools: &["t1", "t2", "t3", "t4"],
     },
     TaskSpec {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_A2,
         task: "1",
         attempt: "a2",
-        session_id: "p0d2-child-1-a2",
+        session_id: "motif-alpha-child-1-a2",
         tools: &["t1", "t2", "t3", "t4"],
     },
     TaskSpec {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_B1,
         task: "2",
         attempt: "b1",
-        session_id: "p0d2-child-2-b1",
+        session_id: "motif-alpha-child-2-b1",
         tools: &["t1", "t2", "t3", "t4"],
     },
     TaskSpec {
-        project: "P0D2",
+        project: "MotifAlpha",
         dispatch_id: M_D2,
         task: "7",
         attempt: "g1",
-        session_id: "p0d2-child-7-g1",
+        session_id: "motif-alpha-child-7-g1",
         tools: &["t1", "t2", "t3", "t4"],
     },
     TaskSpec {
-        project: "P0D7",
+        project: "MotifBeta",
         dispatch_id: M_F2,
         task: "7",
         attempt: "g2",
-        session_id: "p0d7-child-7-g2",
+        session_id: "motif-beta-child-7-g2",
         tools: &["t1", "t2", "t3", "t4"],
     },
 ];
@@ -154,7 +154,7 @@ fn fixture_root(name: &str) -> PathBuf {
                 .join("target")
                 .join("tmp")
         });
-    base.join("p0d2-motif").join(name)
+    base.join("motif-alpha-motif").join(name)
 }
 
 fn session_line(id: &str) -> String {
@@ -165,8 +165,8 @@ fn session_line(id: &str) -> String {
             "version": 3,
             "id": id,
             "timestamp": "2026-11-02T00:00:00.000Z",
-            "cwd": "C:\\SYNTHETIC\\p0d2",
-            "title": "synthetic P0d-2 fixture"
+            "cwd": "C:\\SYNTHETIC\\motif-alpha",
+            "title": "synthetic motif fixture"
         })
     )
 }
@@ -268,7 +268,7 @@ fn build_fixture_tasks(name: &str, tasks: &[TaskSpec]) -> Fixture {
     for (spawn, task) in tasks.iter().enumerate() {
         parent.push_str(&parent_line(spawn as u32, task));
     }
-    write_file(&omp, "p0d2/parent.jsonl", &parent);
+    write_file(&omp, "motif-alpha/parent.jsonl", &parent);
 
     for task in tasks {
         let mut content = session_line(task.session_id);
@@ -302,7 +302,7 @@ fn build_fixture_tasks(name: &str, tasks: &[TaskSpec]) -> Fixture {
         write_file(
             &omp,
             &format!(
-                "p0d2/child-{}-{}-{}.jsonl",
+                "motif-alpha/child-{}-{}-{}.jsonl",
                 task.project, task.task, task.attempt
             ),
             &content,
@@ -310,7 +310,7 @@ fn build_fixture_tasks(name: &str, tasks: &[TaskSpec]) -> Fixture {
     }
 
     let corpus = decode_corpus(&omp, &codex).expect("decode");
-    let generation = "p0d2-fixture-generation";
+    let generation = "motif-alpha-fixture-generation";
     let gen_dir = root.join("generations").join(generation);
     fs::create_dir_all(&gen_dir).expect("generation dir");
     let address_path = gen_dir.join("address.bin");
@@ -525,7 +525,7 @@ fn support_dedupes_tasks_and_reopens_every_occurrence() {
         .iter()
         .map(|exclusion| (exclusion.task.as_str(), exclusion.reason.label()))
         .collect();
-    assert_eq!(excluded.get("P0D2|9"), Some(&"no_call_sequence"));
+    assert_eq!(excluded.get("MotifAlpha|9"), Some(&"no_call_sequence"));
     assert_eq!(excluded.get("token:404"), Some(&"no_admitted_attempt"));
 
     let motif = &report.motifs[0];
@@ -534,7 +534,7 @@ fn support_dedupes_tasks_and_reopens_every_occurrence() {
         .map(|tool| format!("{tool}|flag=B,path=P"))
         .collect();
     assert_eq!(motif.signatures, expected);
-    assert_eq!(motif.reference_task, "P0D2|1");
+    assert_eq!(motif.reference_task, "MotifAlpha|1");
     assert_eq!(motif.reference_attempt, "a1");
     assert!(motif.id.starts_with("mot-"));
 
@@ -543,7 +543,7 @@ fn support_dedupes_tasks_and_reopens_every_occurrence() {
     let t1_attempts: Vec<(&str, u32)> = motif
         .occurrences
         .iter()
-        .filter(|occurrence| occurrence.task == "P0D2|1")
+        .filter(|occurrence| occurrence.task == "MotifAlpha|1")
         .map(|occurrence| (occurrence.attempt.as_str(), occurrence.gap))
         .collect();
     assert_eq!(t1_attempts, [("a1", 0), ("a2", 1)]);
@@ -568,7 +568,7 @@ fn support_dedupes_tasks_and_reopens_every_occurrence() {
         .iter()
         .map(|exclusion| (exclusion.task.as_str(), exclusion.reason.as_str()))
         .collect();
-    assert_eq!(motif_excluded.get("P0D2|9"), Some(&"no_call_sequence"));
+    assert_eq!(motif_excluded.get("MotifAlpha|9"), Some(&"no_call_sequence"));
     assert_eq!(
         motif_excluded.get("token:404"),
         Some(&"no_admitted_attempt")
@@ -588,7 +588,7 @@ fn support_dedupes_tasks_and_reopens_every_occurrence() {
     assert_eq!(motif.columns[3].missing, 0);
     let near: Vec<&ase_motif::motif::Variant> = motif.near_misses().collect();
     assert_eq!(near.len(), 1);
-    assert_eq!(near[0].task, "P0D2|3");
+    assert_eq!(near[0].task, "MotifAlpha|3");
     assert_eq!(near[0].substitutions, 1);
     assert_eq!(near[0].insertions, 0);
     assert_eq!(near[0].deletions, 0);
@@ -687,22 +687,22 @@ fn project_task_addressing_and_text_dedupe_keep_samples_independent() {
     assert!(bare.task_key.is_none());
 
     // The same validator, scoped before reconciliation, resolves each key.
-    let left = membership_scoped(&fixture.index, &fixture.store, "7", Some("P0D2"))
+    let left = membership_scoped(&fixture.index, &fixture.store, "7", Some("MotifAlpha"))
         .expect("left membership");
-    let right = membership_scoped(&fixture.index, &fixture.store, "7", Some("P0D7"))
+    let right = membership_scoped(&fixture.index, &fixture.store, "7", Some("MotifBeta"))
         .expect("right membership");
     assert_eq!(left.status, Status::Assigned);
-    assert_eq!(left.task_key.as_deref(), Some("P0D2|7"));
-    assert_eq!(left.project.as_deref(), Some("P0D2"));
+    assert_eq!(left.task_key.as_deref(), Some("MotifAlpha|7"));
+    assert_eq!(left.project.as_deref(), Some("MotifAlpha"));
     assert_eq!(left.attempts.len(), 1);
     assert_eq!(left.attempts[0].attempt, "g1");
-    assert_eq!(left.attempts[0].project, "P0D2");
+    assert_eq!(left.attempts[0].project, "MotifAlpha");
     assert_eq!(right.status, Status::Assigned);
-    assert_eq!(right.task_key.as_deref(), Some("P0D7|7"));
-    assert_eq!(right.project.as_deref(), Some("P0D7"));
+    assert_eq!(right.task_key.as_deref(), Some("MotifBeta|7"));
+    assert_eq!(right.project.as_deref(), Some("MotifBeta"));
     assert_eq!(right.attempts.len(), 1);
     assert_eq!(right.attempts[0].attempt, "g2");
-    assert_eq!(right.attempts[0].project, "P0D7");
+    assert_eq!(right.attempts[0].project, "MotifBeta");
 
     // An unknown project is unresolved, never a fallback to the other key.
     let unknown = membership_scoped(&fixture.index, &fixture.store, "7", Some("NOPE"))
@@ -711,10 +711,10 @@ fn project_task_addressing_and_text_dedupe_keep_samples_independent() {
     assert!(unknown.attempts.is_empty());
 
     let tasks = vec![
-        scoped_task(&fixture, "P0D2", "1"),
-        scoped_task(&fixture, "P0D2", "2"),
-        scoped_task(&fixture, "P0D2", "7"),
-        scoped_task(&fixture, "P0D7", "7"),
+        scoped_task(&fixture, "MotifAlpha", "1"),
+        scoped_task(&fixture, "MotifAlpha", "2"),
+        scoped_task(&fixture, "MotifAlpha", "7"),
+        scoped_task(&fixture, "MotifBeta", "7"),
     ];
     let config = synthetic_config();
     let report = detect(
@@ -726,16 +726,16 @@ fn project_task_addressing_and_text_dedupe_keep_samples_independent() {
     )
     .expect("motif report");
 
-    // Five raw sequences: task 1 has one duplicate copy; task 2, P0D2|7 and
-    // P0D7|7 share the same text but stay distinct task units.
+    // Five raw sequences: task 1 has one duplicate copy; task 2, MotifAlpha|7 and
+    // MotifBeta|7 share the same text but stay distinct task units.
     assert_eq!(report.tasks, 4);
     assert_eq!(report.sequences_raw, 5);
     assert_eq!(report.sequences, 4);
     assert_eq!(report.deduplicated_sequences.len(), 1);
     let duplicate = &report.deduplicated_sequences[0];
-    assert_eq!(duplicate.task, "P0D2|1");
+    assert_eq!(duplicate.task, "MotifAlpha|1");
     assert_eq!(duplicate.attempt, "a2");
-    assert_eq!(duplicate.duplicate_of.task, "P0D2|1");
+    assert_eq!(duplicate.duplicate_of.task, "MotifAlpha|1");
     assert_eq!(duplicate.duplicate_of.attempt, "a1");
     assert_eq!(duplicate.text_hash.len(), 64);
     assert!(duplicate
@@ -755,8 +755,8 @@ fn project_task_addressing_and_text_dedupe_keep_samples_independent() {
     let tasks_with_occurrence: BTreeSet<&str> =
         motif.occurrences.iter().map(|occurrence| occurrence.task.as_str()).collect();
     assert_eq!(tasks_with_occurrence.len(), 4);
-    assert!(tasks_with_occurrence.contains("P0D2|7"));
-    assert!(tasks_with_occurrence.contains("P0D7|7"));
+    assert!(tasks_with_occurrence.contains("MotifAlpha|7"));
+    assert!(tasks_with_occurrence.contains("MotifBeta|7"));
 
     let duplicates: Vec<&ase_motif::motif::Occurrence> = motif
         .occurrences
@@ -764,7 +764,7 @@ fn project_task_addressing_and_text_dedupe_keep_samples_independent() {
         .filter(|occurrence| occurrence.duplicate_of.is_some())
         .collect();
     assert_eq!(duplicates.len(), 1);
-    assert_eq!(duplicates[0].task, "P0D2|1");
+    assert_eq!(duplicates[0].task, "MotifAlpha|1");
     assert_eq!(duplicates[0].attempt, "a2");
 
     // The duplicate copy is still reopenable evidence.

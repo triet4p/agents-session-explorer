@@ -3,15 +3,15 @@ use super::*;
 use crate::model::ManifestEntry;
 
 const BRANCH: &str =
-    include_str!("../../artifacts/sprint-4/ASE-S4-T1/fixtures/edge_001_branch_edit.jsonl");
+    include_str!("../tests/fixtures/edge/edge_001_branch_edit.jsonl");
 const PARALLEL: &str =
-    include_str!("../../artifacts/sprint-4/ASE-S4-T1/fixtures/edge_002_parallel_tools.jsonl");
+    include_str!("../tests/fixtures/edge/edge_002_parallel_tools.jsonl");
 const NON_USER: &str =
-    include_str!("../../artifacts/sprint-4/ASE-S4-T1/fixtures/edge_004_non_user.jsonl");
+    include_str!("../tests/fixtures/edge/edge_004_non_user.jsonl");
 const EMPTY: &str =
-    include_str!("../../artifacts/sprint-4/ASE-S4-T1/fixtures/edge_009_empty_journal.jsonl");
+    include_str!("../tests/fixtures/edge/edge_009_empty_journal.jsonl");
 const INCOMPLETE: &str =
-    include_str!("../../artifacts/sprint-4/ASE-S4-T1/fixtures/edge_003_incomplete.jsonl");
+    include_str!("../tests/fixtures/edge/edge_003_incomplete.jsonl");
 
 fn project(name: &str, bytes: &[u8], explicit: Option<&str>) -> JournalProjection {
     let sha = sha256_hex(bytes);
@@ -185,13 +185,13 @@ fn layout_matches_the_locked_tree_rule() {
 
 #[test]
 fn escaped_parent_session_in_header_is_parsed_like_the_decoder() {
-    let line = r#"{"type":"session","version":3,"id":"child-id","timestamp":"2026-09-16T06:00:04.825Z","cwd":"F:\\ai-ml\\demo","parentSession":"C:\\Users\\admin\\.omp\\agent\\sessions\\proj\\root.jsonl"}"#;
+    let line = r#"{"type":"session","version":3,"id":"child-id","timestamp":"2026-09-16T06:00:04.825Z","cwd":"C:\\SYNTHETIC\\demo","parentSession":"C:\\Users\\tester\\.omp\\agent\\sessions\\proj\\root.jsonl"}"#;
     let p = project("proj/root/Worker.jsonl", line.as_bytes(), None);
     assert!(p.header.header_ok);
     assert_eq!(p.header.session_id.as_deref(), Some("child-id"));
     assert_eq!(
         p.header.parent_session.as_deref(),
-        Some(r"C:\Users\admin\.omp\agent\sessions\proj\root.jsonl")
+        Some(r"C:\Users\tester\.omp\agent\sessions\proj\root.jsonl")
     );
 }
 

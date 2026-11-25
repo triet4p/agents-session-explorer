@@ -191,8 +191,8 @@ pub fn reopen_bytes(
     match project_bytes(&opts, bytes) {
         Ok(recomputed) => {
             report.projection_recomputed = true;
-            // P1 equality stays stable for projections written before the
-            // additive runtime field existed; P2 facts are checked separately.
+            // Projection equality stays stable for projections written before the
+            // additive runtime field existed; runtime facts are checked separately.
             let mut expected = proj.clone();
             expected.runtime.clear();
             let mut recalculated = recomputed.clone();

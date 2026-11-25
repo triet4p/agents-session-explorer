@@ -1,4 +1,4 @@
-//! P0d-1 synthetic fixture: dispatch-only membership, generation-pinned
+//! Synthetic membership fixture: dispatch-only membership, generation-pinned
 //! CallSig sequences with branch boundaries, per-call evidence and
 //! deterministic Jaccard families.
 //!
@@ -34,10 +34,10 @@ const D6_COMP_B: &str = "66666666-6666-4666-8666-666666666666";
 const D7_MISSING: &str = "77777777-7777-4777-8777-777777777777";
 const D8_WRONG: &str = "88888888-8888-4888-8888-888888888888";
 
-const PARENT_SESSION: &str = "p0d1-parent";
-const A1_SESSION: &str = "p0d1-child-a1";
-const A2_SESSION: &str = "p0d1-child-a2";
-const A3_SESSION: &str = "p0d1-child-a3";
+const PARENT_SESSION: &str = "motif-membership-parent";
+const A1_SESSION: &str = "motif-membership-child-a1";
+const A2_SESSION: &str = "motif-membership-child-a2";
+const A3_SESSION: &str = "motif-membership-child-a3";
 
 struct Fixture {
     root: PathBuf,
@@ -56,7 +56,7 @@ fn fixture_root(name: &str) -> PathBuf {
                 .join("target")
                 .join("tmp")
         });
-    base.join("p0d1-motif").join(name)
+    base.join("motif-membership-motif").join(name)
 }
 
 fn session_line(id: &str) -> String {
@@ -67,8 +67,8 @@ fn session_line(id: &str) -> String {
             "version": 3,
             "id": id,
             "timestamp": "2026-11-01T00:00:00.000Z",
-            "cwd": "C:\\SYNTHETIC\\p0d1",
-            "title": "synthetic P0d-1 fixture"
+            "cwd": "C:\\SYNTHETIC\\motif-membership",
+            "title": "synthetic membership fixture"
         })
     )
 }
@@ -167,16 +167,16 @@ fn build_fixture(name: &str) -> Fixture {
     // Parent journal: valid joins for task 1 (a1, a2, a3) plus one rejected
     // group for each failure mode the membership rule must refuse.
     let mut parent = session_line(PARENT_SESSION);
-    parent.push_str(&parent_line(D1, "P0D", "1", "a1", 0));
-    parent.push_str(&parent_line(D2, "P0D", "1", "a2", 1));
-    parent.push_str(&parent_line(D3, "P0D", "1", "a3", 2));
-    parent.push_str(&parent_line(D4_DUP, "P0D", "2", "a1", 3));
-    parent.push_str(&parent_line(D4_DUP, "P0D", "2", "a1", 4));
-    parent.push_str(&parent_line(D5_COMP_A, "P0D", "3", "a1", 5));
-    parent.push_str(&parent_line(D6_COMP_B, "P0D", "3", "b1", 6));
-    parent.push_str(&parent_line(D7_MISSING, "P0D", "4", "a1", 7));
-    parent.push_str(&parent_line(D8_WRONG, "P0D", "5", "a1", 8));
-    write_file(&omp, "p0d1/parent.jsonl", &parent);
+    parent.push_str(&parent_line(D1, "MotifProj", "1", "a1", 0));
+    parent.push_str(&parent_line(D2, "MotifProj", "1", "a2", 1));
+    parent.push_str(&parent_line(D3, "MotifProj", "1", "a3", 2));
+    parent.push_str(&parent_line(D4_DUP, "MotifProj", "2", "a1", 3));
+    parent.push_str(&parent_line(D4_DUP, "MotifProj", "2", "a1", 4));
+    parent.push_str(&parent_line(D5_COMP_A, "MotifProj", "3", "a1", 5));
+    parent.push_str(&parent_line(D6_COMP_B, "MotifProj", "3", "b1", 6));
+    parent.push_str(&parent_line(D7_MISSING, "MotifProj", "4", "a1", 7));
+    parent.push_str(&parent_line(D8_WRONG, "MotifProj", "5", "a1", 8));
+    write_file(&omp, "motif-membership/parent.jsonl", &parent);
 
     // Attempt a1: a five-call chain (ta..te), a fork sibling on the same parent
     // (tf, tg) and an independent root (th, ti).
@@ -188,7 +188,7 @@ fn build_fixture(name: &str) -> Fixture {
     a1.push_str(&turn_line("a1-e4", Some("a1-e2"), &["tf"]));
     a1.push_str(&turn_line("a1-e5", Some("a1-e4"), &["tg"]));
     a1.push_str(&turn_line("a1-e6", None, &["th", "ti"]));
-    write_file(&omp, "p0d1/child-a1.jsonl", &a1);
+    write_file(&omp, "motif-membership/child-a1.jsonl", &a1);
 
     // Attempt a2 shares the first four calls and diverges at the fifth.
     let mut a2 = session_line(A2_SESSION);
@@ -196,7 +196,7 @@ fn build_fixture(name: &str) -> Fixture {
     a2.push_str(&turn_line("a2-e1", None, &["ta", "tb", "tc"]));
     a2.push_str(&turn_line("a2-e2", Some("a2-e1"), &["td"]));
     a2.push_str(&turn_line("a2-e3", Some("a2-e2"), &["tf"]));
-    write_file(&omp, "p0d1/child-a2.jsonl", &a2);
+    write_file(&omp, "motif-membership/child-a2.jsonl", &a2);
 
     // Attempt a3 repeats a1's chain exactly, plus an unrelated three-call root.
     let mut a3 = session_line(A3_SESSION);
@@ -205,35 +205,35 @@ fn build_fixture(name: &str) -> Fixture {
     a3.push_str(&turn_line("a3-e2", Some("a3-e1"), &["td"]));
     a3.push_str(&turn_line("a3-e3", Some("a3-e2"), &["te"]));
     a3.push_str(&turn_line("a3-e4", None, &["tx", "ty", "tz"]));
-    write_file(&omp, "p0d1/child-a3.jsonl", &a3);
+    write_file(&omp, "motif-membership/child-a3.jsonl", &a3);
 
-    let mut dup = session_line("p0d1-child-dup");
-    dup.push_str(&child_line(D4_DUP, "p0d1-child-dup"));
+    let mut dup = session_line("motif-membership-child-dup");
+    dup.push_str(&child_line(D4_DUP, "motif-membership-child-dup"));
     dup.push_str(&turn_line("dup-e1", None, &["ta", "tb", "tc"]));
-    write_file(&omp, "p0d1/child-dup.jsonl", &dup);
+    write_file(&omp, "motif-membership/child-dup.jsonl", &dup);
 
-    let mut competing = session_line("p0d1-child-competing");
-    competing.push_str(&child_line(D5_COMP_A, "p0d1-child-competing"));
-    competing.push_str(&child_line(D6_COMP_B, "p0d1-child-competing"));
+    let mut competing = session_line("motif-membership-child-competing");
+    competing.push_str(&child_line(D5_COMP_A, "motif-membership-child-competing"));
+    competing.push_str(&child_line(D6_COMP_B, "motif-membership-child-competing"));
     competing.push_str(&turn_line("comp-e1", None, &["ta", "tb", "tc"]));
-    write_file(&omp, "p0d1/child-competing.jsonl", &competing);
+    write_file(&omp, "motif-membership/child-competing.jsonl", &competing);
 
-    let mut wrong = session_line("p0d1-child-wrong");
-    wrong.push_str(&child_line(D8_WRONG, "p0d1-ghost"));
+    let mut wrong = session_line("motif-membership-child-wrong");
+    wrong.push_str(&child_line(D8_WRONG, "motif-membership-ghost"));
     wrong.push_str(&turn_line("wrong-e1", None, &["ta", "tb", "tc"]));
-    write_file(&omp, "p0d1/child-wrong.jsonl", &wrong);
+    write_file(&omp, "motif-membership/child-wrong.jsonl", &wrong);
 
     // A journal whose name could parse to the token but which carries no
     // dispatch record. It must never join membership or contribute sequences.
-    let mut untracked = session_line("p0d1-untracked");
+    let mut untracked = session_line("motif-membership-untracked");
     untracked.push_str(&turn_line("unt-e1", None, &["ta", "tb", "tc"]));
     untracked.push_str(&turn_line("unt-e2", Some("unt-e1"), &["td"]));
     untracked.push_str(&turn_line("unt-e3", Some("unt-e2"), &["te"]));
     untracked.push_str(&turn_line("unt-e4", None, &["tx", "ty", "tz"]));
-    write_file(&omp, "p0d1/S88Task1Eta1.jsonl", &untracked);
+    write_file(&omp, "motif-membership/Proj88Task1Eta1.jsonl", &untracked);
 
     let corpus = decode_corpus(&omp, &codex).expect("decode");
-    let generation = "p0d1-fixture-generation";
+    let generation = "motif-membership-fixture-generation";
     let gen_dir = root.join("generations").join(generation);
     fs::create_dir_all(&gen_dir).expect("generation dir");
     let address_path = gen_dir.join("address.bin");
@@ -389,7 +389,7 @@ fn dispatch_membership_projects_bounded_sequences_and_families() {
     // ---- membership comes only from valid dispatch joins -------------------
     let member = membership(&fixture.index, &fixture.store, "1").expect("membership");
     assert_eq!(member.status, Status::Assigned);
-    assert_eq!(member.task_key.as_deref(), Some("P0D|1"));
+    assert_eq!(member.task_key.as_deref(), Some("MotifProj|1"));
     let attempts: Vec<&str> = member.attempts.iter().map(|a| a.attempt.as_str()).collect();
     assert_eq!(attempts, ["a1", "a2", "a3"]);
     let sessions: Vec<&str> = member
@@ -445,7 +445,7 @@ fn dispatch_membership_projects_bounded_sequences_and_families() {
                 .file(*id)
                 .expect("file")
                 .path()
-                .ends_with("S88Task1Eta1.jsonl")
+                .ends_with("Proj88Task1Eta1.jsonl")
         })
         .expect("untracked journal is indexed");
     assert!(member

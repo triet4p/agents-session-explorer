@@ -13,7 +13,7 @@ pub fn fnv64(bytes: &[u8]) -> u64 {
 }
 
 /// Minimal RFC3339 parser (no chrono dependency). Returns 0 when unparseable;
-/// a zero timestamp is never used for ordering in P0a.
+/// a zero timestamp is never used for ordering.
 pub fn parse_ts_ms(s: &str) -> i64 {
     let b = s.as_bytes();
     if b.len() < 20 || b[4] != b'-' || b[7] != b'-' || b[10] != b'T' {
@@ -132,7 +132,7 @@ pub fn link_events(events: &mut [DecodedEvent], stats: &mut DecodeStats) {
     }
 }
 
-/// P0a has one session per source file; attach every event in the file to it.
+/// The decoder has one session per source file; attach every event in the file to it.
 pub fn assign_sessions(events: &mut [DecodedEvent], sessions: &[SessionMeta]) {
     let local = if sessions.is_empty() { NONE } else { 0 };
     for e in events.iter_mut() {

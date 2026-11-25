@@ -258,9 +258,9 @@ mod tests {
     fn decode_omp_escaped_windows_parent_session_keeps_explicit_session_lineage() {
         // Shape of a real OMP child header: explicit runtime id plus a
         // JSON-escaped Windows parent path (unescaped below for comparison).
-        let escaped = r#"{"type":"session","id":"01a1f9c1-d612-733a-afa2-56470b91dbae","parentSession":"C:\\Users\\admin\\.omp\\sessions\\parent.jsonl","timestamp":"2026-11-20T16:20:00.000Z","version":1}"#;
+        let escaped = r#"{"type":"session","id":"01a1f9c1-d612-733a-afa2-56470b91dbae","parentSession":"C:\\Users\\tester\\.omp\\sessions\\parent.jsonl","timestamp":"2026-11-20T16:20:00.000Z","version":1}"#;
         let unescaped = r#"{"type":"session","id":"01a1f9c1-d612-733a-afa2-56470b91dbae","parentSession":"plain-parent","timestamp":"2026-11-20T16:20:00.000Z","version":1}"#;
-        let expected_parent = r"C:\Users\admin\.omp\sessions\parent.jsonl";
+        let expected_parent = r"C:\Users\tester\.omp\sessions\parent.jsonl";
 
         let decoded = decode_omp(&child_source(), escaped.as_bytes()).unwrap();
         assert_eq!(decoded.events[0].source_type, "session");

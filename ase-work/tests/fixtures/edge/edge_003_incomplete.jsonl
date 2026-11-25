@@ -1,0 +1,9 @@
+{"type":"session","version":3,"id":"fx-incomplete-session","timestamp":"2026-09-15T00:00:00.000Z"}
+{"type":"model_change","id":"m0","parentId":null,"timestamp":"2026-09-15T00:00:01.000Z"}
+{"type":"message","id":"u1","parentId":"m0","timestamp":"2026-09-15T00:00:02.000Z","message":{"role":"user","content":[{"type":"text","text":"synthetic request one"}]}}
+{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-09-15T00:00:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"synthetic aborted"}],"usage":{"totalTokens":1},"stopReason":"aborted"}}
+{"type":"message","id":"u2","parentId":"a1","timestamp":"2026-09-15T00:00:04.000Z","message":{"role":"user","content":[{"type":"text","text":"synthetic request two"}]}}
+{"type":"message","id":"a2","parentId":"u2","timestamp":"2026-09-15T00:00:05.000Z","message":{"role":"assistant","content":[{"type":"text","text":"synthetic error"}],"usage":{"totalTokens":1},"stopReason":"error"}}
+{"type":"message","id":"u3","parentId":"a2","timestamp":"2026-09-15T00:00:06.000Z","message":{"role":"user","content":[{"type":"text","text":"synthetic request three"}]}}
+{"type":"message","id":"a4","parentId":"u3","timestamp":"2026-09-15T00:00:07.000Z","message":{"role":"assistant","content":[{"type":"text","text":"synthetic empty usage"}],"usage":{},"stopReason":"length"}}
+{"type":"message","id":"a3","parentId":"u3","timestamp":"2026-09-15T00:00:08.000Z","message":{"role":"assistant","content":[{"type":"text","text":"synthetic unaccounted"}],"stopReason":"stop"}}

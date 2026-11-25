@@ -1,4 +1,4 @@
-//! P0c-3: evidence-backed `parentSession` delegation.
+//! Evidence-backed `parentSession` delegation.
 //!
 //! This crate consumes indexed session metadata only. It never opens raw
 //! bytes, decodes prose, consults file order or path proximity, or emits a

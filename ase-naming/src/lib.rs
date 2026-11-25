@@ -1,4 +1,4 @@
-//! P0c-2: versioned file-name grammar and naming audit.
+//! Versioned file-name grammar and naming audit.
 //!
 //! This crate reads names and source coordinates only. It never opens a
 //! transcript, never decodes prose, and never calls a model. Ambiguous splits

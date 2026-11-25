@@ -1,10 +1,13 @@
-//! Compact, content-free address index format (P0a only).
+//! Compact, content-free address index format.
 //!
 //! All integers are little-endian and read by offset, so no unaligned casts.
 //! No decoded text, postings, shingle or model output is stored.
 
 use ase_core::{EventKind, Role};
 
+/// Legacy on-disk magic written by released indexes. The bytes are a stable
+/// file-format contract and must not change; the spelling is retained only
+/// inside this constant and is not a pattern for new identifiers.
 pub const MAGIC: &[u8; 8] = b"ASEP0A01";
 pub const HEADER_LEN: usize = 64;
 pub const EV_LEN: usize = 72;

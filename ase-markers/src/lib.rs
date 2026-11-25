@@ -1,4 +1,4 @@
-//! P0c-4: evidence-backed observation of `task_id=` markers in allowlisted prose.
+//! Evidence-backed observation of `task_id=` markers in allowlisted prose.
 //!
 //! This crate is pure text logic. It never opens files, reads raw bytes,
 //! consults an index or a model, emits a task key, groups by session or
@@ -6,7 +6,7 @@
 //! allowlisted prose block as an assignment-context signal, a mere mention or
 //! ambiguous, and keeps its in-block position so the caller can attach the
 //! versioned block selector and generation evidence. Reconciliation across
-//! signals is P0c-5 and is deliberately absent here.
+//! signals is deliberately absent here.
 
 /// Stable identifier of the derivation rule recorded on every observation.
 pub const RULE_NAME: &str = "task-id-marker";
@@ -161,7 +161,7 @@ impl Default for RuleInfo {
             matcher: MATCHER.to_string(),
             domain: "A task_id= marker is scanned only in already-allowlisted user/assistant prose blocks of one published generation. Every occurrence keeps its in-block position for the caller's versioned selector and block digest. Tool output, thinking, system, unknown blocks and call signatures are never scanned.".to_string(),
             abstention: "An occurrence with no cue, or with both assignment and mention cues in its local window, stays ambiguous/abstain. A marker is never promoted by another occurrence, by being first in a block, or by being the only marker in a session.".to_string(),
-            task_boundary: "This rule emits occurrence-level observations only. It never emits a TaskKey, an assigned_to edge, a session-level assignment, a chronology or a merge across IDs; reconciling this signal with naming and delegation is P0c-5.".to_string(),
+            task_boundary: "This rule emits occurrence-level observations only. It never emits a TaskKey, an assigned_to edge, a session-level assignment, a chronology or a merge across IDs; reconciling this signal with naming and delegation is a separate layer.".to_string(),
         }
     }
 }

@@ -1,0 +1,11 @@
+{"type":"session","version":3,"id":"fx-nonuser-session","timestamp":"2026-09-15T00:00:00.000Z"}
+{"type":"model_change","id":"m0","parentId":null,"timestamp":"2026-09-15T00:00:01.000Z"}
+{"type":"message","id":"dev1","parentId":"m0","timestamp":"2026-09-15T00:00:02.000Z","message":{"role":"developer","content":[{"type":"text","text":"synthetic developer"}]}}
+{"type":"message","id":"fm1","parentId":"dev1","timestamp":"2026-09-15T00:00:03.000Z","message":{"role":"fileMention","content":[{"type":"text","text":"synthetic mention"}]}}
+{"type":"message","id":"u1","parentId":"fm1","timestamp":"2026-09-15T00:00:04.000Z","message":{"role":"user","content":[{"type":"text","text":"synthetic request"}]}}
+{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-09-15T00:00:05.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"read","arguments":{}}],"usage":{"totalTokens":1},"stopReason":"toolUse"}}
+{"type":"model_usage","id":"mu1","parentId":"a1","timestamp":"2026-09-15T00:00:06.000Z","role":"tiny","purpose":"auto-thinking","usage":{"totalTokens":1},"stopReason":"stop"}
+{"type":"custom","customType":"tool_execution_start","id":"x1","parentId":"a1","timestamp":"2026-09-15T00:00:07.000Z","data":{}}
+{"type":"message","id":"r1","parentId":"x1","timestamp":"2026-09-15T00:00:08.000Z","message":{"role":"toolResult","toolCallId":"c1","toolName":"read","content":[{"type":"text","text":"synthetic result"}]}}
+{"type":"custom_message","customType":"irc:incoming","attribution":"user","id":"cm1","parentId":"r1","timestamp":"2026-09-15T00:00:09.000Z","content":"synthetic incoming","details":{},"display":true}
+{"type":"message","id":"a2","parentId":"cm1","timestamp":"2026-09-15T00:00:10.000Z","message":{"role":"assistant","content":[{"type":"text","text":"synthetic answer"}],"usage":{"totalTokens":1},"stopReason":"stop"}}

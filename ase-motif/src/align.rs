@@ -3,8 +3,9 @@
 //! The alignment never collapses the two mutation kinds: a call that exists
 //! only on one side is an `Insertion` or a `Deletion`, while two different
 //! calls at the same aligned column are a `Substitution`. That distinction is
-//! the whole point of P0d-2: "a tool was added" and "the task was done another
-//! way" are different observations and are reported as different numbers.
+//! the whole point of distinguishing mutation kinds: "a tool was added" and
+//! "the task was done another way" are different observations and are reported
+//! as different numbers.
 //!
 //! The dynamic programme is band-limited: only cells with `|i - j| <= band`
 //! are visited, and a pair whose length difference exceeds the band is an

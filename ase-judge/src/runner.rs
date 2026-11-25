@@ -1,4 +1,4 @@
-//! Model access boundary for the P3 evaluation layer.
+//! Model access boundary for the evaluation layer.
 //!
 //! Two backends remain:
 //!

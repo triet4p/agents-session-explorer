@@ -1,4 +1,4 @@
-//! P3 offline evaluation layer: deterministic baseline, workspace-local model
+//! Offline evaluation layer: deterministic baseline, workspace-local model
 //! boundary and a separate Judge over a reopenable, pinned projection.
 //!
 //! Boundaries this crate keeps:

@@ -1,4 +1,4 @@
-//! P0c-5/P0c-9: reconcile the P0c signals into an evidence-backed task decision.
+//! Reconcile derived signals into an evidence-backed task decision.
 //!
 //! Inputs are already-derived, metadata-only signals:
 //! - `file-name-grammar` / `naming-v1` parse results (derived),

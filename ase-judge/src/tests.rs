@@ -1,6 +1,6 @@
 //! Contract tests for the assertion, cache and baseline vocabulary.
 //!
-//! These protect observable P3 behavior: evidence-less assertions are refused
+//! These protect observable evaluation behavior: evidence-less assertions are refused
 //! before any source read, cache identity follows span/input and versions, and
 //! the baseline keeps `unknown` as a measured outcome.
 

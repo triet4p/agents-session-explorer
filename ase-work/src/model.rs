@@ -4,9 +4,10 @@
 //! projected exactly like an assigned one. It never writes resolver or motif
 //! membership and never calls a model.
 //!
-//! Rule `omp-turn-episode` / `turn-episode-v1` pins the locked Sprint-4 T1
-//! counting unit and branch rule (`s4t1-turn-v1`). Evidence selectors are
-//! versioned separately so a changed extraction requires a new version.
+//! Rule `omp-turn-episode` / `turn-episode-v1` pins the counting unit and
+//! branch rule described by the released reference identifier in
+//! `COMPATIBLE_REFERENCE_RULE`. Evidence selectors are versioned separately so
+//! a changed extraction requires a new version.
 
 use ase_core::SpanRef;
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,9 @@ pub const WORK_RULE: &str = "omp-turn-episode";
 pub const WORK_VERSION: &str = "turn-episode-v1";
 /// Selector/decoder namespace for turn, boundary and leaf evidence.
 pub const EVIDENCE_VERSION: &str = "work-evidence-v1";
+/// Legacy rule identifier published by `v0.4.0`. It is quoted verbatim only so
+/// consumers can compare the released compatibility field; do not propagate
+/// this spelling into new names, docs or contracts.
 pub const COMPATIBLE_REFERENCE_RULE: &str = "s4t1-turn-v1";
 pub const ADAPTER_NAME: &str = "omp-stock";
 
@@ -23,7 +27,7 @@ pub const SEL_USER: &str = "user-message-boundary";
 pub const SEL_CUSTOM_USER: &str = "custom-user-boundary";
 pub const SEL_LEAF: &str = "active-leaf";
 /// Stored runtime facts for one assistant-usage turn. Extracted from the same
-/// indexed line that backs the P1 turn evidence, so leaf membership and spans
+/// indexed line that backs the turn evidence, so leaf membership and spans
 /// stay identical. Missing producer fields remain `None`: analytics reports
 /// coverage instead of substituting zero or an inferred price.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -214,7 +218,7 @@ pub struct JournalProjection {
     pub episodes_wide: Vec<EpisodeProjection>,
     pub counts: Counts,
 
-    /// Additive P2 runtime facts for every assistant-usage turn (both
+    /// Additive runtime facts for every assistant-usage turn (both
     /// branches). Older projections decode with an empty vector.
     #[serde(default)]
     pub runtime: Vec<RuntimeTurn>,

@@ -1,4 +1,4 @@
-//! P0a Source + Decoder implementations for omp JSONL and codex JSONL/zstd.
+//! Source + decoder implementations for OMP JSONL and Codex JSONL/zstd.
 
 pub mod codex;
 pub mod omp;
