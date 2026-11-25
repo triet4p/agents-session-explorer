@@ -444,9 +444,9 @@ Three generators are separated by identity, version and cache namespace:
   explicit task reset/hand-off, an independent named deliverable, then
   same-deliverable refinement; acknowledgement-only messages and undecidable
   pairs stay `unknown`.
-- the SLM boundary stage (`slm-boundary-v2`) and the Judge
-  (`judge-adjudicate-v2`) are independent local-model stages. The Judge sees
-  the baseline and SLM labels as codes and is never merged with either.
+- The boundary LLM (`slm-boundary-v2`) and Judge (`judge-adjudicate-v2`)
+  are separate stages. The Judge sees the baseline and boundary labels as
+  codes, and its output is recorded separately.
 
 An assertion carries its two exact source anchors (ordinal, entry id,
 offset/length, line SHA-256), the rendered-input digest, the projection and
@@ -536,14 +536,13 @@ before the Ollama backend was removed. T5 verification replaced that backend
 with a loopback synthetic check of all five protocols: auth header location,
 exact body shape, effort omission, typed parse, redacted failures,
 cold/warm cache and zero-call query paths (90/90 checks, no provider request).
-The full-cohort SLM/Judge run remains unmeasured pending T3, no live provider
-call is part of the T5 candidate, and no judge gate is claimed. The evaluation
-does not read session recaps, and `unknown` is never merged into either
-positive label.
+Live synthetic smoke passed for Go Chat Completions, Go Responses, and
+Gemini Decisions. It does not establish full-cohort quality or cache
+behavior; T3 measures those separately. The evaluation does not read session
+recaps, and `unknown` is never merged into either positive label.
 
 **Local measurement update (supersedes the earlier unmeasured-status sentence):**
-the cache/zero-call gate was measured in a workspace-local experiment on all
-1,400 pinned decisions: both model stages ran
+the cache/zero-call gate was measured in a workspace-local experiment on all 1,400 pinned decisions: both model stages ran
 cold with a temporary pre-send `redact-v1` policy and a fail-closed payload
 allowlist, the unchanged replay made 0 outbound calls with an identical
 assertion digest, and `verify` reopened 4,200/4,200 anchors. The experiment
@@ -551,7 +550,8 @@ patch was reverted; the shipped CLI has no judge redaction option and keeps
 policy `none`. The 26-decision ablation is descriptive against frozen hand
 labels with no quality threshold, so no cohort quality verdict or
 historical-recap equivalence follows. Public source publishes the judge and
-evidence-bundle code and synthetic fixtures, not these measurement records.
+evidence-bundle
+code and synthetic fixtures, not these measurement records.
 
 ## LLM API configuration (`ase llm`)
 
@@ -599,6 +599,9 @@ ase llm key clear --profile chat
 ase llm status --json
 ase llm smoke --profile chat --json   # fixed synthetic wire check
 ```
+
+`config enroll` stores the key for the provider and endpoint origin in the
+profile it saves. Runtime environment overrides do not redirect enrollment.
 
 `--json` emits a machine-readable redacted report (profile, provider, API
 type, endpoint, normalized origin, model, effort, credential
@@ -729,6 +732,24 @@ synthetic rubric pair through the selected protocol and prints the auth header
 name, whether an effort was sent, the request's top-level body keys, the typed
 label/confidence semantic, usage and model. It prints no credential, prompt or
 response body. It is the only command that opens a socket.
+
+On failure, `smoke` exits nonzero and prints a separate
+`ase-llm-smoke-diagnostic/v1` JSON report on stdout. It distinguishes explicit
+incomplete/truncated Responses state (with an allowlisted reason), refusal or
+missing output text, and text that does not map to the rubric. The report carries
+only fixed codes, the HTTP status when known, output-part presence flags, and
+the extracted text's length and JSON delimiter presence — never a credential,
+endpoint query, prompt, response body, output/refusal text or provider error
+text. No retry or fallback request is made; the success report schema is
+unchanged.
+
+For generation APIs (`chat-completions`, `responses`, `gemini`), the fixed
+synthetic instruction requests the rubric JSON object explicitly: one object
+with `label` (`split`/`continue`/`unknown`), `confidence`
+(`high`/`medium`/`low`) and `abstain_reason` (a short reason only for
+`unknown`, otherwise `null`). The two decision APIs keep the typed-choice
+instruction and their own answer contract. This is a prompt instruction only:
+no JSON response format is forced on the request and no retry is made.
 
 `ase judge run` uses the same resolution: `--slm-profile NAME` and
 `--judge-profile NAME`. A request that carries the rendered decision pair to a

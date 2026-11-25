@@ -1,0 +1,22 @@
+# Sprint 2 — P0d: Motif evidence (`v0.3.0`)
+
+**Mục tiêu:** phát hiện chuỗi CallSig lặp có bằng chứng mở lại được, phân biệt lệnh chèn và lệnh thay thế, không gọi model. [Roadmap](../PLAN.md) · [Thiết kế motif](../INITIALIZATION.md#10-motif--boilerplate) · [Gate gốc](../SCOPE.md#gates).
+
+**Nhánh và quyền:** `main`, không tạo nhánh. Chủ dự án đã cấp quyền hai checkpoint Bronze trên snapshot được review và commit release riêng; chỉ sau tất cả gate mới được tag `v0.3.0` đúng commit smoke, push `main` và tag lên `origin`, rồi công bố GitHub prerelease từ source. Không lấy thay đổi ngoài phạm vi hoặc staging của người dùng.
+
+| Task | Đầu ra và nghiệm thu | Workflow |
+|---|---|---|
+| [x] P0d-1 — Đầu vào và family | Chiếu chuỗi CallSig từ generation đã ghim và membership dispatch hợp lệ; giữ biên nhánh/phiên và chứng cứ từng call. Không dùng ứng viên hoặc quan hệ ủy quyền làm membership. Fixture cho thấy Jaccard trên shingle sinh family xác định và không trộn chuỗi qua biên. | Full: [evidence PASS](../../artifacts/sprint-2/P0d-1/evidence-review.md), [checkpoint](../../artifacts/sprint-2/checkpoints/P0d-1.md) (`b3e3007`). |
+| [x] P0d-2 — Alignment, support và CLI | Tách insertion/substitution; fixture có exact, gapped, near-miss và lặp task qua nhiều attempt. Gap tăng không làm support giảm; đếm một lần mỗi task, ghi quy tắc dedupe, mẫu số và phần bị loại. Null model với seed cố định; báo lift hoặc z và mở lại từng occurrence. Đồng bộ README, CHANGELOG và các hợp đồng bị ảnh hưởng. | Full: [evidence PASS sau sửa](../../artifacts/sprint-2/P0d-2/evidence-review-a2.md), [checkpoint](../../artifacts/sprint-2/checkpoints/P0d-2-a2.md) (`24697d1`). |
+| [x] P0d-3-FIX — Mở lại chứng cứ OMP | Ingest và reopen cùng diễn giải `arguments` dạng JSON object; kiểm hồi quy index → reopen, giữ tương thích dạng cũ. | Light: [hồi quy và CLI smoke PASS](../../artifacts/sprint-2/P0d-3/summary-fix-a1.md); có trong commit phát hành `1914bc6`. |
+| [x] P0d-3 — Ablation | Chạy `τ/g` trên 380 task ID có membership hợp lệ; ghi manifest đã ghim, tiêu chí lấy mẫu, exact/relaxed, mẫu số, phần bị loại và lift/z. Không thay bằng kết quả fixture. | Light: [ablation PASS](../../artifacts/sprint-2/P0d-3/summary-a6.md); 9 cấu hình trên cùng 380 khóa, kiểm tái lập và reopen PASS. Giữ `τ=0.50, g=2`. |
+| [x] REL-030-1 — Snapshot phát hành | Khớp version/tag và changelog, build locked từ snapshot sạch đúng commit; smoke `index → motif → mở lại chứng cứ` trên fixture và đối chiếu các giới hạn trong release notes. | Light: [build, hồi quy và CLI smoke PASS](../../artifacts/REL-030-1/summary-a1.md) trên `1914bc6`. Đã push `main` và tag, [prerelease từ source](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.3.0). |
+
+**Review liên task:** [PASS](../../artifacts/sprint-2/deep-review-a2.md) sau checkpoint sửa định danh `PROJECT|TASK` và khử trùng `text_hash` trước khi đếm.
+
+**Quyết định về gate:** Chủ dự án duyệt thay yêu cầu metadata dispatch native cho riêng ablation P0d-3 bằng [bằng chứng lịch sử đã đối chiếu thủ công](../../artifacts/sprint-2/P0d-3/legacy/summary-a2.md): dispatch có cấu trúc trong journal cha, journal con và task được xác nhận với plan/artifact thật. Giữ ngưỡng **380 khóa phân biệt**, ghim manifest trước khi đo; nếu dưới 380 khóa hợp lệ hoặc không kiểm lại được bằng chứng/generation, dừng nghiệm thu và phát hành. Không mở rộng semantics resolver mặc định hay thay kết quả bằng fixtures.
+
+**Phương pháp khóa mẫu:** chỉ lấy task key phân biệt (`project` + `task`) có ít nhất một membership được xác nhận bằng cặp dispatch cha/con nhất quán. Giữ mọi attempt hợp lệ của cùng key trong cùng đơn vị đếm. Ghi nguồn, generation, phiên bản resolver, tiêu chí chọn, danh sách key và SHA-256 của manifest trước khi chạy; nếu có hơn 380 key hợp lệ, lấy 380 key đầu theo thứ tự SHA-256 của khóa chuẩn hóa (tie-break theo key), không chọn theo kết quả motif. Chạy mọi cấu hình `τ/g` trên cùng manifest. Manifest có định danh phiên thật chỉ giữ cục bộ; báo cáo công khai dùng số tổng hợp và digest, không chứa journal hay đường dẫn nguồn.
+
+**Khảo sát cohort lịch sử (hoàn tất):** [Báo cáo đối chiếu thủ công](../../artifacts/sprint-2/P0d-3/legacy/summary-a2.md) ghi nhận 548 khóa `project|task` từ 1.517 lượt chạy. Không còn nhãn tạm trong phạm vi rà soát; ca không đủ chứng cứ và ngoài phạm vi được tách riêng.
+Cohort này chỉ dùng cho phép đo P0d-3; không tuyên bố hỗ trợ định danh lịch sử trong sản phẩm.
