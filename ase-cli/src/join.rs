@@ -7,7 +7,10 @@
 //! `(kind, key/alias)`; there is no inference, recommendation, model call, gate
 //! measurement or write to any store. No private source path enters the output.
 
-use crate::verify::{self, BUNDLE_VERSION};
+use crate::bundle_digest::value_digest;
+use crate::bundle_schema::BUNDLE_VERSION;
+use crate::bundle_verdicts::assertion_body;
+use crate::verify;
 use ase_core::{err, Result};
 use ase_index::sha256_hex;
 use serde_json::{json, Value};
@@ -317,7 +320,7 @@ fn load_store(path: &Path) -> Result<BTreeMap<String, Value>> {
     let mut body = value.clone();
     let recorded = body.get("store_digest").and_then(Value::as_str).unwrap_or("").to_string();
     body.as_object_mut().expect("store object").remove("store_digest");
-    if recorded != format!("sha256:{}", verify::value_digest(&body)) {
+    if recorded != format!("sha256:{}", value_digest(&body)) {
         return Err(err("assertion store digest mismatch"));
     }
     let mut assertions = BTreeMap::new();
@@ -471,7 +474,7 @@ fn lineage_failure(
             return reject("evidence_unverified", "cited evidence did not reopen today");
         }
     }
-    let expected = format!("as-{}", &verify::value_digest(&verify::assertion_body(&view.bundle, assertion))[..16]);
+    let expected = format!("as-{}", &value_digest(&assertion_body(&view.bundle, assertion))[..16]);
     if id != expected {
         return reject("assertion_id_conflict", "assertion id differs from the stored body");
     }
@@ -497,7 +500,7 @@ fn lineage_failure(
         let Some(verdict) = rows.get(id) else {
             return reject("verdict_missing", "assertion is absent from the supplied verdict file");
         };
-        let digest = format!("sha256:{}", verify::value_digest(verdict));
+        let digest = format!("sha256:{}", value_digest(verdict));
         if assertion.get("verdict_digest").and_then(Value::as_str) != Some(digest.as_str()) {
             return reject("verdict_digest_mismatch", "verdict digest differs from the supplied verdict file");
         }
@@ -530,8 +533,8 @@ fn same_spans(stored: &[Value], current: &[Value]) -> bool {
             "block_sha256": row.get("block_sha256").cloned().unwrap_or(Value::Null),
         })
     };
-    let stored: BTreeSet<String> = stored.iter().map(|row| verify::value_digest(&key(row))).collect();
-    let current: BTreeSet<String> = current.iter().map(|row| verify::value_digest(&key(row))).collect();
+    let stored: BTreeSet<String> = stored.iter().map(|row| value_digest(&key(row))).collect();
+    let current: BTreeSet<String> = current.iter().map(|row| value_digest(&key(row))).collect();
     stored == current
 }
 
@@ -611,7 +614,7 @@ fn join_row(assertion: &Value, catalog: &Catalog) -> JoinRow {
         "status": status,
         "sorted_entry_ids": entry_ids,
     });
-    let join_id = format!("j-{}", &verify::value_digest(&join_body)[..16]);
+    let join_id = format!("j-{}", &value_digest(&join_body)[..16]);
     let mut evidence_refs: Vec<Value> = assertion
         .get("evidence_refs")
         .and_then(Value::as_array)

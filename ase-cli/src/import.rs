@@ -6,7 +6,10 @@
 //! in a separate local assertion file. No model, network, catalog or gate
 //! measurement is part of this module.
 
-use crate::verify::{self, value_digest, BUNDLE_VERSION};
+use crate::bundle_digest::value_digest;
+use crate::bundle_schema::BUNDLE_VERSION;
+use crate::bundle_verdicts::assertion_body;
+use crate::verify;
 use ase_core::{err, Result};
 use ase_index::sha256_hex;
 use serde_json::{json, Value};
@@ -504,7 +507,7 @@ fn check_rows(
             continue;
         }
         // Mirrors the read-only cross-check in `verify`: contract §4.2.
-        let expected = format!("as-{}", &value_digest(&verify::assertion_body(&view.bundle, row))[..16]);
+        let expected = format!("as-{}", &value_digest(&assertion_body(&view.bundle, row))[..16]);
         if assertion_id.as_deref() != Some(expected.as_str()) {
             outcomes.push(reject("assertion_id_conflict", "assertion id differs from content"));
             continue;
