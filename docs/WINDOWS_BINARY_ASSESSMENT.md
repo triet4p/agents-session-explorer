@@ -100,7 +100,27 @@ Kết quả đo trên đúng asset phát hành (chi tiết §8): build remap s�
 
 ## 8. Bản ghi phát hành
 
-Bản ghi đo đạc của đúng asset phát hành được cập nhật ngay sau khi asset được tạo và tải lên: tên asset, kích thước, SHA-256 của archive và các thành viên, kết quả quét marker đường dẫn, kết quả smoke fixture, và kết quả tải lại/xác minh từ GitHub. `SHA256SUMS.txt` phát hành kèm asset là bản ghi chuẩn để người nhận đối chiếu.
+Bản ghi đo đạc của đúng asset phát hành, thực hiện ngày 2026-11-27 trên máy build Windows 11 x64 sau khi asset được tải lên.
+
+| Hạng mục | Giá trị |
+|---|---|
+| Tag / commit | `v0.7.0` (lightweight) = `a80bc865b84826efef9a83496a1098e0fffa6416`; `origin/main` cùng commit |
+| Release | `https://github.com/triet4p/agents-session-explorer/releases/tag/v0.7.0` |
+| Nguồn build | Export sạch từ đúng tag (196 tệp, không `.git`), `Cargo.lock` SHA-256 `90d44663fee3b9a67e6ce1182cd6578e2bc750d909638c05f1dc40d283729a24` |
+| Toolchain | Rust/Cargo `1.91.1`; MSVC `14.43.34808`; Windows SDK `10.0.20348.0`; target `x86_64-pc-windows-msvc`; `--release --locked` |
+| Remap | Rust `--remap-path-prefix` (`C:\Users\admin`→`/build-home`, `.cargo`→`/cargo`, `.rustup`→`/rustup`, rust-src→`/rust-src`, cây nguồn→`/ase-src`); MSVC `/pathmap` cho nguồn và thư mục người dùng |
+| EXE | `ase.exe`, 10.681.344 byte, PE32+ x86-64 (`0x8664`, subsystem console), SHA-256 `692087bc41d506041d443ed0606eab4ddeee79d0f355bbceff48b0997b5073ab` |
+| Runtime tĩnh | 15 DLL import trực tiếp, không delay-load/bound import; 14 DLL hệ thống/API-set + `VCRUNTIME140.dll` (12 hàm); không DLL bên thứ ba |
+| Quét đường dẫn | 0 lần xuất hiện `C:\Users`, `F:\ai-ml`, `.rustup`, `.cargo`, `admin`, `s11rel`; 12 chuỗi ổ-đĩa còn lại đều là literal fixture tổng hợp `C:\SYNTHETIC\…`; các tiền tố trung tính `/ase-src`, `/rust-src`, `/cargo` còn trong panic location |
+| Tái tạo byte | Hai build remap cùng nguồn/cờ: cùng kích thước 10.681.344 byte, digest khác nhau (`32e00b5f…bc557` và `692087bc…b5073ab`); xác nhận không tái tạo byte |
+| Archive | `ase-0.7.0-windows-x64.zip`, 4.118.116 byte, SHA-256 `b90134ff2a5508ead37f0c2ca3e783d9fa8ae94cfebb58c8dda0cf504d907dcf` |
+| Thành viên archive | 3 entry phẳng: `ase.exe` (10.681.344, `692087bc…b5073ab`), `README.md` (12.103, `b4ea3e94…53ae1`), `THIRD_PARTY_NOTICES.txt` (26.812, `06994495…74c65`); không entry thư mục, không bit reparse/symlink |
+| Ký | **Unsigned** — `signtool verify /pa /v` trả `No signature found` (0 verified, 1 error); PE certificate table VA/size `0/0` |
+| Smoke | `--help` exit 0; `ase fixture` exit 0; index `ready`, `files=3`, `omp=1/1`, `codex=2/2`, `zstd=1/1`, `events=22`, `sessions=3`; search `ok`, `count=3`, cùng generation; `open` `verified_against_index_snapshot`, `raw_span_hash_match=true`, `block_digest_match=true`, `freshness=fresh` |
+| Hướng dẫn | Chạy nguyên văn phần verify/extract của README trên asset: hash archive khớp, giải nén ra đúng 3 tệp, hash EXE khớp, `--help` exit 0; bản archive bị thêm 1 byte bị chặn bởi hash gate trước khi giải nén |
+| Xác minh remote | Asset tải lại từ GitHub có SHA-256 khớp `b90134ff…07dcf`; `SHA256SUMS.txt` khớp; README và notices trong archive trùng byte với tag; EXE giải nén từ asset tải lại chạy `--help` exit 0 |
+
+Hai lỗi công cụ của host được phát hiện trong lúc kiểm và đã xử lý trong hướng dẫn phát hành: `Get-FileHash` không có trong Windows PowerShell 5.1 của host (dùng `certutil -hashfile`), và `Expand-Archive` lỗi overload `.NET` (dùng `System.IO.Compression.ZipFile` + `ExtractToFile` với `overwrite=$false`). README phát hành chứa bản đã sửa; archive được tạo lại và smoke lại sau khi sửa, nên hash ở trên là hash của bản đã sửa.
 
 ## Phụ lục A — Bản đồ bằng chứng
 
