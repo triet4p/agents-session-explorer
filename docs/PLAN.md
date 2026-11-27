@@ -2,6 +2,12 @@
 
 `agents-session-explorer` là CLI cục bộ để tìm, tái dựng và đối chiếu phiên OMP/Codex từ bằng chứng có thể mở lại. [Phạm vi và gate](SCOPE.md#gates) · [Lộ trình gốc](INITIALIZATION.md#13-lộ-trình).
 
+## Sprint tiếp theo
+
+**[Sprint 9 — Tra cứu phiên cục bộ từ lần dùng đầu tiên](sprint-plans/sprint-9.md) — hoàn tất.** Ứng viên `03adb6b` đã qua nghiệm thu độc lập trên fixture và review theo tiêu chí đã điều chỉnh; sẵn sàng cho pilot giới hạn, chưa thử với người dùng hoặc corpus thật. Chủ dự án bỏ gate quan sát mọi kết nối outbound; không tuyên bố đã chứng minh CLI không kết nối mạng. Chưa push/tag bản chứa Sprint 9.
+
+## Các mốc đã giao đến v0.3.0
+
 - **`v0.1.0` — P0a/P0b:** index địa chỉ, tìm prose, mở và kiểm lại span. Chủ dự án chấp nhận kết quả P0b đã đo; mốc p99 <50 ms không đổi.
 - **[`v0.2.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.2.0) — P0c:** prerelease từ source. Định danh chỉ hỗ trợ phiên OMP mới có dispatch tracking. [Smoke đúng commit](../artifacts/REL-020-3/summary-a1.md) không thay holdout lịch sử và không cấp mẫu số cho P0d.
 - **[`v0.3.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.3.0) — P0d:** prerelease từ source trên `main`. [Sprint 2 — Motif evidence](sprint-plans/sprint-2.md) hoàn tất: ablation trên 380 khóa đã đối chiếu, giữ mặc định `τ=0.50`, `g=2`; fix reopen có trong snapshot đã smoke.
