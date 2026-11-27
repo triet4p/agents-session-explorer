@@ -13,12 +13,11 @@ fixed synthetic wire check and sends no session data. `ase llm` stores the
 non-secret API profile and the user-scoped API key used by that transport.
 
 **Publication state:** the latest published release tag is
-[`v0.5.1`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.1),
-a source prerelease from `main` that republishes the `v0.5.0` tree with the
-`ase-cli` module declarations in their final order; commands, output, exit
-codes and schemas are unchanged. It includes the judge, the LLM API transport,
-the evidence-bundle export/verify/import/join commands and the runnable
-synthetic `ase-bundle-v1` fixtures under `fixtures/bundle/`. Gate and
+[`v0.6.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.6.0),
+a source prerelease from `main` that adds Sprint 9 local-session navigation
+helpers: `ase search --open-args`, `ase open --session-args`, and refusal of
+ambiguous session ids. It builds on `v0.5.1` (judge, LLM API transport,
+evidence-bundle export/verify/import/join, synthetic `ase-bundle-v1` fixtures). Gate and
 measurement records remain workspace-local evidence and are not published
 release assets; the commands below generate their own synthetic inputs under
 `.tmp/`.
@@ -42,7 +41,7 @@ Rust 1.91.1 or newer. Produces `target/release/ase` (`ase.exe` on Windows).
 
 ## Quickstart — first local index on Windows (PowerShell)
 
-This path builds the `v0.5.1` source with its lockfile and indexes a synthetic
+This path builds the `v0.6.0` source with its lockfile and indexes a synthetic
 fixture through **explicit roots only**. It does not read your real session
 roots, change the CLI or its defaults, or need any model/network provider.
 Prerequisites: Windows x64, Rust 1.91.1+, `git`, and PowerShell 7 (Windows
@@ -57,7 +56,7 @@ $Src  = Join-Path $Base 'src'
 $Work = Join-Path $Base 'work'
 New-Item -ItemType Directory -Force -Path $Work | Out-Null
 
-git clone --depth 1 --branch v0.5.1 https://github.com/triet4p/agents-session-explorer.git $Src
+git clone --depth 1 --branch v0.6.0 https://github.com/triet4p/agents-session-explorer.git $Src
 if ($LASTEXITCODE -ne 0) { throw 'clone failed' }
 Push-Location $Src
 cargo build --release --locked
@@ -68,7 +67,7 @@ Pop-Location
 
 If you already have this repository checked out locally, replace `git clone`
 with a tag export, for example
-`git -C <repo> archive v0.5.1 | tar -x -C $Src` (`tar` ships with Windows).
+`git -C <repo> archive v0.6.0 | tar -x -C $Src` (`tar` ships with Windows).
 Both yield the same `Cargo.lock` and source tree; the build stays `--locked`.
 
 **2. Generate a synthetic fixture and name explicit roots.** `ase fixture`

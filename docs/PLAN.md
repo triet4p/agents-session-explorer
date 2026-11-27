@@ -4,7 +4,7 @@
 
 ## Sprint tiếp theo
 
-**[Sprint 9 — Tra cứu phiên cục bộ từ lần dùng đầu tiên](sprint-plans/sprint-9.md) — hoàn tất.** Ứng viên `03adb6b` đã qua nghiệm thu độc lập trên fixture và review theo tiêu chí đã điều chỉnh; sẵn sàng cho pilot giới hạn, chưa thử với người dùng hoặc corpus thật. Chủ dự án bỏ gate quan sát mọi kết nối outbound; không tuyên bố đã chứng minh CLI không kết nối mạng. Chưa push/tag bản chứa Sprint 9.
+**[Sprint 9 — Tra cứu phiên cục bộ từ lần dùng đầu tiên](sprint-plans/sprint-9.md) — hoàn tất.** Ứng viên `03adb6b` đã qua nghiệm thu độc lập trên fixture; phát hành trong [`v0.6.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.6.0) (source prerelease từ `main`). Không có binary, không pilot người dùng/corpus thật, và không kiểm outbound bị chặn.
 
 ## Các mốc đã giao đến v0.3.0
 
@@ -22,7 +22,7 @@
 
 **[Sprint 7 — P4 trao đổi bằng chứng](sprint-plans/sprint-7.md) hoàn tất:** export, verify, import verdict và đối chiếu skill/template chạy cục bộ trên pilot OMP đã ghim. Trích được bằng chứng cho 4/4 ứng viên; mở lại 19/19 bản ghi bằng chứng và xác minh 4/4 assertion đã nhận. [Deep review R2 PASS](../artifacts/sprint-7/ASE-S7-T6/reviews/ASE-S7-DEEP-R2.md). Phát hành trong [`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0).
 
-**Trạng thái phát hành:** [`v0.5.1`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.1) là bản có tag mới nhất, source prerelease từ `main` phát hành lại nguyên cây [`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0) với thứ tự khai báo module cuối cùng của `ase-cli`; lệnh, đầu ra, exit code, schema và hành vi không đổi. Cây gồm P3/P4, lớp Judge/LLM API, evidence bundle và refactor Sprint 8. Tag nằm trên commit phát hành tại `origin/main`; mã, fixture tổng hợp và tài liệu công khai nằm trong cùng cây, tách khỏi hồ sơ sprint nội bộ. `v0.5.0` vẫn được giữ nguyên; `v0.4.0` là bản trước đó và không chứa các lệnh judge/evidence-bundle. Chuẩn hóa T2 đã push sạch lên [`main` tại `fc73fbf`](https://github.com/triet4p/agents-session-explorer/commit/fc73fbf3373612f1c8f977fd9e03eea3bafa55fc): 4 commit fast-forward, giữ cả `fixtures/p4/*` và `fixtures/bundle/*`, không kèm `artifacts/` nội bộ mới.
+**Trạng thái phát hành:** [`v0.6.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.6.0) là bản có tag mới nhất, source prerelease từ `main` thêm helper điều hướng Sprint 9 (`--open-args`, `--session-args`, từ chối ID mơ hồ) trên nền `v0.5.1`. Không có binary asset; gate và bản ghi đo đạc còn là bằng chứng workspace-local.
 
 **Đồng bộ toàn diện (chủ dự án duyệt):** viết lại vị trí `main` local để loại `artifacts/` nội bộ khỏi dòng public, giữ nguyên code, commit toàn bộ `docs/` hiện có, ignore scratch/build/evidence nội bộ; `git status` cuối phải sạch và đồng bộ với `origin/main`.
 

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-27
+
 ### Added
 
 - Added `ase search --open-args`, an opt-in `open_args` field on every hit with the exact `--event`, `--selector`, `--generation` and `--index` values from that hit, plus a `flags` array ready to pass to `ase open`. Nothing is executed, no query, prose or source-journal path is emitted, and default search output, ranking and `open` verification are unchanged.
@@ -10,6 +12,12 @@
 ### Changed
 
 - Changed session-id selection in `show`, `resolve`, `work session`, `analytics session` and `adapter omp-stock` to refuse an ambiguous id instead of silently opening one of the matching sessions. This is a behavior change: an id shared by two indexed sessions (for example the same Codex session indexed from both JSONL and zstd) now exits 2 with the match count and asks for an explicit span or file address, while a unique id behaves as before.
+
+### Notes
+
+- `v0.6.0` is a source prerelease from `main`; no binary assets are published.
+- Sprint 9 was verified on synthetic fixtures with an independent review; no real-user pilot or real corpus was run.
+- Outbound/network behavior was not verified in a blocked-outbound environment. The default navigation path makes no model/network call, but this does not prove the CLI never attempts network access.
 
 ## [0.5.1] - 2026-11-27
 
