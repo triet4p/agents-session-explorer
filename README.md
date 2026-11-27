@@ -50,15 +50,27 @@ if ($actual -ne $expected.ToLowerInvariant()) {
 }
 
 $dest = Join-Path $HOME 'ase-0.7.0'
-Expand-Archive -LiteralPath $zip -DestinationPath $dest
+New-Item -ItemType Directory -Path $dest | Out-Null
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zipFile = [System.IO.Compression.ZipFile]::OpenRead($zip)
+try {
+    foreach ($entry in $zipFile.Entries) {
+        [System.IO.Compression.ZipFileExtensions]::ExtractToFile(
+            $entry, (Join-Path $dest $entry.FullName), $false)
+    }
+}
+finally { $zipFile.Dispose() }
+
 $ase  = Join-Path $dest 'ase.exe'
 & $ase --help
 if ($LASTEXITCODE -ne 0) { throw 'ase --help failed' }
 ```
 
 There is no installer: extraction creates or changes nothing outside the destination
-directory, and `ase` does not modify `PATH`, the registry or a service. To remove it,
-delete that directory and any index directory you created; see
+directory, and `ase` does not modify `PATH`, the registry or a service. The snippet
+uses the .NET ZIP API because `Expand-Archive` fails on some Windows PowerShell 5.1
+builds; it performs the same fresh-directory extraction with no overwrite. To remove
+it, delete that directory and any index directory you created; see
 [Uninstall](#uninstall).
 
 `certutil -hashfile` is used because it ships with Windows and does not depend on
