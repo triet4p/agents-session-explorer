@@ -5,6 +5,11 @@
 ### Added
 
 - Added `ase search --open-args`, an opt-in `open_args` field on every hit with the exact `--event`, `--selector`, `--generation` and `--index` values from that hit, plus a `flags` array ready to pass to `ase open`. Nothing is executed, no query, prose or source-journal path is emitted, and default search output, ranking and `open` verification are unchanged.
+- Added `ase open --session-args`, an opt-in `session_args` locator for a verified block. It is `ready` only when the session id is declared in its header, the header span still re-reads to that id, and exactly one session in the pinned index declares it; it emits `show`, `resolve` and OMP `work session` flags that target the immutable generation address. Missing or file-name-derived ids, duplicate ids, edited headers and unverified evidence are `refused` with a reason and no runnable flags.
+
+### Changed
+
+- Changed session-id selection in `show`, `resolve`, `work session`, `analytics session` and `adapter omp-stock` to refuse an ambiguous id instead of silently opening one of the matching sessions. This is a behavior change: an id shared by two indexed sessions (for example the same Codex session indexed from both JSONL and zstd) now exits 2 with the match count and asks for an explicit span or file address, while a unique id behaves as before.
 
 ## [0.5.1] - 2026-11-27
 

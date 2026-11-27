@@ -10,7 +10,7 @@ use crate::audit::{delegation_inputs, naming_sources};
 use crate::marker_audit::{marker_evidence, verified_prose};
 use crate::cli_option::{has, positional};
 use crate::index::{index_path, load_with_publication};
-use crate::show::{parse_span, span_label};
+use crate::show::{parse_span, span_label, unique_session};
 use ase_core::{err, EventIdx, RawStore, Result, NONE};
 use ase_ingest::util::fnv64;
 use ase_index::{FsRawStore, Index};
@@ -33,9 +33,7 @@ pub fn run(args: &[String]) -> Result<()> {
     let note = String::new();
 
     if let Some(id) = target.strip_prefix("session:") {
-        let sidx = idx
-            .session_by_id(id)
-            .ok_or_else(|| err(format!("session not indexed: {id}")))?;
+        let sidx = unique_session(idx, id)?;
         let s = idx.session(sidx)?;
         subject = format!("session:{id}");
         let header = s.header();

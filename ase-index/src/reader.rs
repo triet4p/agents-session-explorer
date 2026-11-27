@@ -189,20 +189,44 @@ impl Index {
         Ok(None)
     }
 
-    pub fn session_by_id(&self, id: &str) -> Option<u32> {
+    /// Every session record whose declared id equals `id`, in index order.
+    ///
+    /// Records are sorted by id, so duplicates are contiguous. A command that
+    /// accepts a session id must treat more than one match as ambiguous
+    /// instead of silently selecting the first record.
+    pub fn sessions_with_id(&self, id: &str) -> Vec<u32> {
         let mut lo = 0usize;
         let mut hi = self.session_count as usize;
         while lo < hi {
             let mid = (lo + hi) / 2;
-            let rec = self.session_rec(mid as u32).ok()?;
+            let Some(rec) = self.session_rec(mid as u32).ok() else {
+                return Vec::new();
+            };
             let sid = self.string(get_u32(rec, S_ID_OFF), get_u32(rec, S_ID_LEN));
-            match sid.cmp(id) {
-                std::cmp::Ordering::Less => lo = mid + 1,
-                std::cmp::Ordering::Greater => hi = mid,
-                std::cmp::Ordering::Equal => return Some(mid as u32),
+            if sid < id {
+                lo = mid + 1;
+            } else {
+                hi = mid;
             }
         }
-        None
+        let mut out = Vec::new();
+        let mut pos = lo;
+        while pos < self.session_count as usize {
+            let Ok(rec) = self.session_rec(pos as u32) else {
+                break;
+            };
+            let sid = self.string(get_u32(rec, S_ID_OFF), get_u32(rec, S_ID_LEN));
+            if sid != id {
+                break;
+            }
+            out.push(pos as u32);
+            pos += 1;
+        }
+        out
+    }
+
+    pub fn session_by_id(&self, id: &str) -> Option<u32> {
+        self.sessions_with_id(id).first().copied()
     }
 
     pub fn sessions_by_parent(&self, parent: u32) -> Vec<u32> {

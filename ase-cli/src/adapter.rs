@@ -7,6 +7,7 @@
 use crate::cli_option::{has, opt, parse_opt};
 use crate::cli_output::emit;
 use crate::index::load_with_publication;
+use crate::show::unique_session;
 use ase_adapter_omp_stock::{
     path_eq, reopen, scan, ClaimsFile, Options as AdapterOptions, StockView, ViewEvent, ViewFile,
 };
@@ -153,9 +154,7 @@ fn adapter_view(args: &[String], reopen_mode: bool) -> Result<AdapterView> {
     if reopen_mode {
         selected.extend(all.iter().map(|f| f.id));
     } else if let Some(session) = opt(args, "--session") {
-        let sid = idx
-            .session_by_id(&session)
-            .ok_or_else(|| err(format!("unknown session: {session}")))?;
+        let sid = unique_session(&idx, &session)?;
         let s = idx.session(sid)?;
         let parent_file = s.file();
         let parent_path = all

@@ -6,6 +6,7 @@
 use crate::cli_option::{has, opt};
 use crate::cli_output::emit;
 use crate::index::require_publication;
+use crate::session_nav::session_args;
 use crate::show::{freshness_json, span_label};
 use ase_postings::block_by_selector;
 use ase_core::{err, RawStore, Result};
@@ -63,7 +64,13 @@ pub fn run(args: &[String]) -> Result<()> {
         .map(|e| hash_bytes(&record.block_hash) == Some(e.block_hash))
         .unwrap_or(false);
     let fresh = freshness_json(&idx, span.file);
-    let status = if span_ok && block_ok {
+    let verified = span_ok && block_ok;
+    let navigation = if has(args, "--session-args") {
+        Some(session_args(&idx, &store, &published, event, verified)?)
+    } else {
+        None
+    };
+    let status = if verified {
         "verified_against_index_snapshot"
     } else {
         "unverified"
@@ -93,6 +100,9 @@ pub fn run(args: &[String]) -> Result<()> {
             "block re-derived from raw JSON with the versioned selector; no stored prose is consulted"
         ]
     });
+    if let Some(nav) = navigation {
+        v["session_args"] = nav;
+    }
     if has(args, "--content") {
         let content = match extracted {
             Ok(e) => e.prose.or(e.call_sig).unwrap_or_default(),

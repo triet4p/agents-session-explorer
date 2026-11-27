@@ -181,6 +181,18 @@ generation from another index is refused before raw bytes are read, and
 edited raw bytes make `open` report `unverified`. `session_local` is an
 internal index number, not a `show session:<ID>` selector.
 
+Add `--session-args` to the same `open` call to get a `session_args` locator
+for the verified block. It is `ready` only when the session id is declared in
+the session header, the header span still re-reads to that id, and exactly one
+session in the pinned index declares it. Its `show`, `resolve` and (OMP)
+`work` objects each carry a `flags` array that targets the immutable
+generation address, not the mutable `--index` path. A missing or
+file-name-derived id, a duplicate id, an edited header and an unverified block
+are `refused` with a `reason` and no runnable flags; the verified span
+evidence stays usable either way. A rebuild after the open cannot redirect
+those flags to another session, and the old hit itself is refused by
+generation before raw bytes are read.
+
 **6. Clean up derived data only.** Keep every path inside `$Work`; never
 delete a source root as part of cleanup. `--layer all` writes the pointer
 sidecar `<index>.pub.json` and a `generations\` directory next to the index
@@ -252,6 +264,8 @@ ase index --layer all --index ase.index --json
 ase search "phrase or terms" --index ase.index --json --explain --open-args
 # each hit then carries open_args.flags for the matching `ase open` call
 ase open --event N --selector S --generation G --index ase.index --json
+# Session locator from the same verified block (pinned generation address)
+ase open --event N --selector S --generation G --index ase.index --session-args --json
 ase shingle --event N --index ase.index --json
 
 # In-process latency sample (lookup and evidence reopen reported separately)
@@ -1070,6 +1084,29 @@ It is opt-in: default search output, FTS ranking and `open`'s raw recheck are
 unchanged. No command is executed, and no query, prose or source-journal path
 is embedded. As before, an appended source is not searched until reindexed;
 `open` only verifies the pinned span, and reports `unverified` after an edit.
+
+`open --session-args` adds a `session_args` locator to a verified block. It
+never guesses a session from `session_local`, the file name or the working
+directory: the id must be declared in the header, the header span must
+re-read to the same id, and exactly one indexed session may declare it. The
+emitted `show`, `resolve` and (OMP) `work session` flags pass the pinned
+generation address as `--index`, so a later base-index rebuild cannot redirect
+them to another session. Missing, path-derived, duplicate and edited-header
+cases return `refused` with the reason and no flags. `show`, `resolve`,
+`work session`, `analytics session` and `adapter omp-stock` likewise refuse an
+ambiguous session id instead of selecting one record. `work session` projects
+the active graph leaf by default; `--leaf ENTRY_ID` projects an explicit older
+tip without changing Turn/Episode semantics. When the same Codex session is
+indexed from both its JSONL and zstd copies, both records carry one header id,
+so the id is ambiguous and the locator refuses; index one encoding or address
+the record by span/file instead.
+
+Session navigation is not task membership. `resolve task:<TOKEN>` reports an
+assignment only from source-backed naming, marker or delegation evidence, and
+`work delta` additionally requires both child sessions to be admitted by the
+same native dispatch joins for one project/task key. A stock session without
+dispatch records, a lone prose `task_id=` marker and a conflicting claim stay
+unresolved, unconfirmed or rejected rather than becoming membership.
 
 OMP call blocks use the same argument extraction when indexed and reopened: a
 tool call's legacy `args` field wins over `arguments`, and the selected field's

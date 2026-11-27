@@ -38,6 +38,19 @@ fn parse_range(s: Option<String>) -> Option<(u32, u32)> {
     Some((p.next()?.parse().ok()?, p.next()?.parse().ok()?))
 }
 
+/// One session id must resolve to exactly one indexed record before a command
+/// opens it. Duplicate header ids stay ambiguity, never an arbitrary pick.
+pub(crate) fn unique_session(idx: &Index, id: &str) -> Result<u32> {
+    let matches = idx.sessions_with_id(id);
+    match matches.len() {
+        0 => Err(err(format!("session not indexed: {id}"))),
+        1 => Ok(matches[0]),
+        count => Err(err(format!(
+            "session id is ambiguous: {count} indexed sessions share {id}; select one by an explicit span or file address"
+        ))),
+    }
+}
+
 pub(crate) fn freshness_json(idx: &Index, file: u32) -> Value {
     let f = match idx.file(file) {
         Ok(f) => f,
@@ -134,7 +147,7 @@ pub fn run(args: &[String]) -> Result<()> {
 
     let mut found: Vec<EventIdx> = Vec::new();
     if let Some(id) = target.strip_prefix("session:") {
-        let sidx = idx.session_by_id(id).ok_or_else(|| err(format!("session not indexed: {id}")))?;
+        let sidx = unique_session(&idx, id)?;
         for e in idx.session_events(sidx)? {
             let ev = idx.event(e)?;
             if let Some(r) = role_filter {

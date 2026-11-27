@@ -21,6 +21,7 @@ use crate::journal_projection::{
 use crate::cli_option::{has, opt, positional};
 use crate::cli_output::emit;
 use crate::index::index_path;
+use crate::show::unique_session;
 
 fn work_usage() {
     println!(
@@ -247,9 +248,7 @@ fn cmd_work_session(args: &[String]) -> Result<()> {
     let (idx, store, generation) = load_work(args)?;
     let omp_root = opt(args, "--omp-root").unwrap_or_else(|| config::omp_root());
     let file_id = if let Some(session) = opt(args, "--session") {
-        let session_idx = idx
-            .session_by_id(&session)
-            .ok_or_else(|| err(format!("session not found in address index: {session}")))?;
+        let session_idx = unique_session(&idx, &session)?;
         idx.session(session_idx)?.file()
     } else if let Some(file) = opt(args, "--file").and_then(|s| s.parse::<u32>().ok()) {
         file
