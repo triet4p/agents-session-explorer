@@ -5,6 +5,8 @@
 ### Added
 
 - Licensed the current source tree under [MIT](LICENSE) with copyright held by Le Minh Triet; the workspace manifest declares `license = "MIT"` and every crate inherits it. The `v0.7.0` tag and archive are unchanged.
+- Added `ase search --text`, a metadata-only hit list with the returned count, full generation, explicit index path and per-hit role, span, freshness, event and selector. It never prints the query, prose, journal paths or generated shell commands; JSON stays the default and `--text` cannot be combined with `--json`, `--open-args` or `--explain`. No hits remains exit `0`, while an unavailable postings layer remains `layer_unavailable` with exit `4`.
+- Added `ase open --text`, a metadata-only reopen report with the evidence status, block key, span, encoding and coordinate system, both hash checks and the freshness hint. It never prints prose, call signatures or journal paths; JSON stays the default and `--text` cannot be combined with `--json`, `--content` or `--session-args`. A hit from another generation still refuses with `generation_mismatch` and exit `4` before reading raw, a readable mismatch stays `unverified` with exit `0`, and an unreadable raw source, missing mapping or unusable publication remains an error with exit `2`.
 
 ## [0.7.0] - 2026-11-27
 

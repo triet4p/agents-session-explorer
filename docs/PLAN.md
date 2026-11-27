@@ -2,6 +2,10 @@
 
 `agents-session-explorer` là CLI cục bộ để tìm, tái dựng và đối chiếu phiên OMP/Codex từ bằng chứng có thể mở lại. [Phạm vi và gate](SCOPE.md#gates) · [Lộ trình gốc](INITIALIZATION.md#13-lộ-trình).
 
+## Sprint hiện tại
+
+**[Sprint 12 — Từ chỉ mục đến mở lại bằng chứng hằng ngày](sprint-plans/sprint-12.md) — hoàn tất trên fixture và máy build.** Đã thêm chế độ văn bản tự chọn cho search/open, giữ mặc định JSON và hợp đồng xác minh; hướng dẫn đã được kiểm trên PowerShell 5.1 và 7. Ứng viên Windows x64 nội bộ kèm `LICENSE` MIT đã qua review; chưa phát hành và không dùng dữ liệu phiên thật.
+
 ## Đánh giá Sprint 11
 
 **[Sprint 11 — Đánh giá và phát hành binary Windows x64](sprint-plans/sprint-11.md) — hoàn tất; phát hành trên bằng chứng fixture/máy build.** Đánh giá kỹ thuật ban đầu là NO-GO vì gate Windows sạch chưa đạt và còn rủi ro giấy phép/vận hành. Chủ dự án đã chấp nhận rõ ràng bằng chứng fixture/máy build và duyệt phát hành binary Windows x64 `v0.7.0`. Bản phát hành dùng rebuild đã khử đường dẫn build, notices bên thứ ba đã sửa và hướng dẫn dùng `certutil`; các giới hạn chưa kiểm và khoảng trống giấy phép tại thời điểm phát hành được giữ nguyên trong [đánh giá chi tiết](WINDOWS_BINARY_ASSESSMENT.md) và README trong archive `v0.7.0`. Source-only vẫn là phương án mặc định cho người dùng cần build tại chỗ.
@@ -32,7 +36,7 @@
 
 **[Sprint 7 — P4 trao đổi bằng chứng](sprint-plans/sprint-7.md) hoàn tất:** export, verify, import verdict và đối chiếu skill/template chạy cục bộ trên pilot OMP đã ghim. Trích được bằng chứng cho 4/4 ứng viên; mở lại 19/19 bản ghi bằng chứng và xác minh 4/4 assertion đã nhận. [Deep review R2 PASS](../artifacts/sprint-7/ASE-S7-T6/reviews/ASE-S7-DEEP-R2.md). Phát hành trong [`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0).
 
-**Trạng thái phát hành:** [`v0.7.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.7.0) là bản có tag mới nhất. Đây là bản đầu tiên phát hành binary Windows x64 (`ase-0.7.0-windows-x64.zip`, unsigned, kèm `SHA256SUMS.txt`), build lại từ đúng tag với đường dẫn build đã khử; code không đổi hành vi so với `v0.6.0`. Bản phát hành dựa trên chấp nhận của chủ dự án đối với bằng chứng fixture/máy build; chưa kiểm máy Windows sạch, chưa ký, và dự án chưa có grant giấy phép. [`v0.6.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.6.0) vẫn là source prerelease trước đó.
+**Trạng thái phát hành:** [`v0.7.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.7.0) là bản có tag mới nhất. Đây là bản đầu tiên phát hành binary Windows x64 (`ase-0.7.0-windows-x64.zip`, unsigned, kèm `SHA256SUMS.txt`), build lại từ đúng tag với đường dẫn build đã khử; code không đổi hành vi so với `v0.6.0`. Bản phát hành dựa trên chấp nhận của chủ dự án đối với bằng chứng fixture/máy build; chưa kiểm máy Windows sạch, chưa ký, và tag/archive này không có giấy phép dự án. Giấy phép MIT được thêm vào `main` sau tag, không sửa tài sản đã phát hành. [`v0.6.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.6.0) vẫn là source prerelease trước đó.
 
 **Đồng bộ toàn diện (chủ dự án duyệt):** viết lại vị trí `main` local để loại `artifacts/` nội bộ khỏi dòng public, giữ nguyên code, commit toàn bộ `docs/` hiện có, ignore scratch/build/evidence nội bộ; `git status` cuối phải sạch và đồng bộ với `origin/main`.
 

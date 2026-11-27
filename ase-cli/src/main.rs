@@ -114,8 +114,11 @@ fn usage() {
          ase verify  [--all | --sample N] [--index FILE] [--json]\n\
          ase verify  <BUNDLE-DIR> [--local-map FILE] [--verdicts FILE] [--json]\n\
          ase bench-show [--n N] [--seed N] [--index FILE] [--json]\n\
-         ase search  <QUERY> [--phrase] [--top-k N] [--explain] [--open-args] [--json]\n\
-         ase open    --event N --selector S --generation G [--session-args] [--content] [--json]\n\
+         ase search  <QUERY> [--index FILE] [--phrase] [--top-k N] [--text] [--explain] [--open-args] [--json]\n\
+                     (--text is metadata-only and excludes --json, --open-args and --explain)\n\
+         ase open    --event N --selector S --generation G [--index FILE] [--text]\n\
+                     [--session-args] [--content] [--json]\n\
+                     (--text is metadata-only and excludes --json, --content and --session-args)\n\
          ase shingle (--hash HASH | --event N) [--json]\n\
          ase bench-search [--n N] [--seed N] [--top-k N] [--source all|jsonl|zstd] [--probe TERM] [--json]\n\
          ase fixture --out DIR\n\

@@ -117,6 +117,136 @@ profile. A missing root and an empty root both index zero files and still report
 The same flow works with a build from source (`cargo build --release --locked`),
 using `.\target\release\ase.exe` instead of the downloaded `$ase`.
 
+### Daily fixture lookup (source build only)
+
+The `v0.7.0` JSON quick start above is unchanged. The `--text` modes described here
+and in the next two sections exist only in this source-tree build (or a candidate
+carrying the same changes), not in the `v0.7.0` binary; JSON output and the
+`open_args.flags` contract stay the same for automation. Work from a fixture in a
+workspace-local directory whose path contains a space, and always give the CLI an
+explicit index path — never let roots default.
+
+```powershell
+$work    = Join-Path $HOME 'ase daily lookup'   # space on purpose
+$fixture = Join-Path $work 'fixture'
+$index   = Join-Path $work 'ase.index'
+$empty   = Join-Path $work 'empty-source'
+New-Item -ItemType Directory -Force -Path $work, $empty | Out-Null
+
+# 1. Synthetic journals. Keep BOTH roots explicit; if you only want one source
+#    type, point the other flag at a deliberately empty directory instead of
+#    dropping it and falling back to the real profile.
+& $ase fixture --out $fixture
+
+# 2. Check scope and count before searching: the base fixture is 3 files,
+#    OMP 1 (synthetic.jsonl) and Codex 2 (synthetic.jsonl, synthetic.jsonl.zst).
+$ompCount   = @(Get-ChildItem -LiteralPath (Join-Path $fixture 'omp') -Recurse -File).Count
+$codexCount = @(Get-ChildItem -LiteralPath (Join-Path $fixture 'codex') -Recurse -File).Count
+if ($ompCount + $codexCount -ne 3) { throw "unexpected fixture count: $ompCount + $codexCount" }
+
+# 3. Index both explicit roots into the explicit (space-containing) index path.
+& $ase index --layer all `
+    --omp-root   (Join-Path $fixture 'omp') `
+    --codex-root (Join-Path $fixture 'codex') `
+    --index $index --json
+
+# 4. Readable hit list; JSON stays available for automation.
+& $ase search 'SYNTHETIC USER TOKEN' --index $index --text
+$result = & $ase search 'SYNTHETIC USER TOKEN' --index $index --json --open-args | ConvertFrom-Json
+$hit    = $result.hits[0]
+
+# 5. Copy keys from that hit and reopen on the SAME index. A literal selector
+#    containing '|' must be single-quoted (PowerShell reads it as a pipeline),
+#    e.g. --selector 'block-v1|message.content[0]|text'
+$selector = [string]$hit.selector
+& $ase open --event $hit.event --selector $selector `
+    --generation $result.generation --index $index --text
+```
+
+`ase index` defaults to the `address` layer, which has no postings, so search needs
+`--layer all` (or `--layer postings`). `status = "ready"` alone does not prove the
+index has data: a missing or empty root also reports `ready` with zero files, so
+check scope and count first. Pass both roots every time to avoid the fallback to
+`ASE_OMP_ROOT` / `ASE_CODEX_ROOT` and the real profile directories.
+
+Copy the keys, do not rebuild them: take `generation` from the search header and
+`event`/`selector` from the same hit line, and reuse the exact `--index` path. Never
+feed a hit string to `Invoke-Expression` and never choose a hit by display number or
+line rank — the leading number is display order only.
+
+Read the status before calling a block evidence; `exit 0` is not a verification
+verdict:
+
+- No hits prints `0` and exits `0` — a valid empty result, not a failed search.
+- `layer_unavailable` exits `4`: check `--index`; if postings were not published,
+  rebuild with `--layer all` and both roots.
+- `generation_mismatch` exits `4`: the hit belongs to another generation. Search
+  again on the intended `--index`; do not edit the generation copied from the old hit.
+- Unreadable raw, a missing block mapping or an unusable publication exits `2`: it is
+  never verified, and text mode does not repeat the raw path.
+- `unverified` exits `0` when raw is readable but a hash check fails: inspect the
+  source, and re-index then search again only when a new snapshot is intended. Only
+  `verified_against_index_snapshot` (both `raw_span_hash_match` and
+  `block_digest_match` true) is verified evidence.
+
+To read local text, reopen the same hit without `--text`, confirm the status on that
+same open, then add `--content` explicitly. Default JSON output and the
+`open_args.flags` splat above are unchanged. Transcripts, shell queries, metadata and
+the derived index stay local data — do not copy them into an evidence dossier.
+
+### Readable search hits (source build only)
+
+`ase search <QUERY> --index FILE --text` is available only in this source-tree
+build, not in the `v0.7.0` binary. It prints the returned hit count, the full
+pinned generation, the explicit `--index FILE`, and one metadata line per hit
+with display order, role, span, freshness, event and selector. It never prints
+the query, snippets, prose, journal paths or a ready-to-run shell command. The
+leading number is display order only: reopen with the event and selector from
+that hit, the generation from the header, and the same `--index FILE`.
+
+```powershell
+& $ase search 'SYNTHETIC USER TOKEN' --index $index --text
+```
+
+`--phrase` and `--top-k` still apply. `--text` cannot be combined with
+`--json`, `--open-args` or `--explain` (exit `2`); default and `--json` output
+stay unchanged for automation. A successful search with no hits prints a zero
+count with exit `0`; a missing or mismatched postings layer prints
+`layer_unavailable` with exit `4` and is not a zero-hit result.
+
+### Readable reopen status (source build only)
+
+`ase open --event N --selector S --generation G --index FILE --text` is available
+only in this source-tree build, not in the `v0.7.0` binary. It prints the evidence
+status, the exact block key, the span, the encoding and coordinate system, both
+verification checks and the source freshness hint. It never prints prose, call
+signatures or journal paths.
+
+```powershell
+& $ase open --event $hit.event --selector $hit.selector `
+    --generation $hit.open_args.generation --index $index --text
+```
+
+`status=verified_against_index_snapshot` appears only when both
+`raw_span_hash_match` and `block_digest_match` are true. For zstd sources the
+span stays in `decompressed_stream_bytes`, and freshness is only a metadata hint,
+not a byte check. `--text` cannot be combined with `--json`, `--content` or
+`--session-args` (exit `2`).
+
+Read the status before treating a block as evidence:
+
+- A hit from another generation stops with `status=generation_mismatch` (exit `4`)
+  before any raw read. Search again on the intended `--index`; do not edit the
+  generation copied from the old hit.
+- Readable raw with one failed check stays `status=unverified` (exit `0`). Inspect
+  the source, and only re-index then search again when a new snapshot is intended.
+- A missing block mapping, an unusable publication or an unreadable raw source
+  remains an error (exit `2`) and is never reported as verified.
+
+To read local text, reopen the same hit without `--text`, confirm the status, then
+add `--content` explicitly. Default JSON output and the `open_args.flags` splat
+above are unchanged.
+
 ## Build from source
 
 Requirements:
@@ -151,7 +281,7 @@ runs, so rebuilding will not reproduce the published digest.
 | Area | Commands and purpose |
 |---|---|
 | Index | `ase index` builds the address layer and optional postings layer; one generation is published atomically behind `<index>.pub.json`. |
-| Search and evidence | `ase search`, `ase open`, `ase show`, `ase shingle`, `ase verify` return metadata and reopen exact spans; `--content` is the only way to print source text. |
+| Search and evidence | `ase search` (JSON by default, `--text` for a metadata-only hit list), `ase open` (JSON by default, `--text` for a metadata-only reopen status), `ase show`, `ase shingle`, `ase verify` return metadata and reopen exact spans; `--content` is the only way to print source text. |
 | Navigation | `ase search --open-args` and `ase open --session-args` emit exact `open`/`show`/`resolve`/`work` flags for a verified block; ambiguous session ids are refused. |
 | Identity | `ase resolve`, `ase audit naming`, `ase audit delegation`, `ase audit markers` reconcile naming grammar, delegation and `task_id=` markers with inspectable evidence. |
 | Work and analytics | `ase work project\|session\|reopen\|compare\|delta` projects turns/episodes; `ase analytics` reports stored cost, duration and clock unions. |

@@ -14,6 +14,59 @@ use ase_postings::search;
 use serde_json::{json, Value};
 
 
+/// Flag combinations that make the metadata-only text report ambiguous.
+fn conflicting_text_flag(args: &[String]) -> Option<&'static str> {
+    if !has(args, "--text") {
+        return None;
+    }
+    ["--json", "--open-args", "--explain"]
+        .into_iter()
+        .find(|flag| has(args, flag))
+}
+
+fn search_usage() {
+    println!(
+        "ase search <QUERY> [--index FILE] [--phrase] [--top-k N] [--text]\n\
+         [--explain] [--open-args] [--json]\n\
+         --text prints the hit count, full generation and metadata-only hit lines; it excludes\n\
+         --json, --open-args and --explain. No query, prose, snippet or source path is printed."
+    );
+}
+
+/// Human-readable counterpart of the JSON hit list. Rank is display order only;
+/// the reopen keys come from the pinned header and each hit line.
+fn render_text(generation: &str, index: &str, hits: &[Value]) -> String {
+    let mut out = format!(
+        "search: {} hit(s), generation={}, index={}\n",
+        hits.len(),
+        generation,
+        index
+    );
+    for (rank, hit) in hits.iter().enumerate() {
+        out.push_str(&format!(
+            "{}. role={} span={} freshness={} event={} selector={}\n",
+            rank + 1,
+            hit["role"].as_str().unwrap_or(""),
+            hit["span"].as_str().unwrap_or(""),
+            hit["freshness"].as_str().unwrap_or(""),
+            hit["event"].as_u64().unwrap_or_default(),
+            hit["selector"].as_str().unwrap_or("")
+        ));
+    }
+    out.push_str("note: the leading number is display order only; reopen by event, selector, generation and index");
+    out
+}
+
+/// Text-mode status for an opened address with no usable postings layer.
+fn unavailable_text() -> [&'static str; 4] {
+    [
+        "search: layer_unavailable",
+        "no search result was produced; this is not a zero-hit report",
+        "check --index; if postings were not published, rebuild with --layer all and both --omp-root and --codex-root",
+        "note: the address layer remains usable",
+    ]
+}
+
 fn unavailable_value(command: &str, reason: &str) -> Value {
     json!({
         "command": command,
@@ -47,11 +100,26 @@ fn open_args(event: u32, selector: &str, generation: &str, index: &str) -> Value
 }
 
 pub fn run(args: &[String]) -> Result<()> {
+    if has(args, "--help") || has(args, "-h") {
+        search_usage();
+        return Ok(());
+    }
+    if let Some(flag) = conflicting_text_flag(args) {
+        return Err(err(format!(
+            "--text cannot be combined with {flag}; see `ase search --help`"
+        )));
+    }
     let query = positional(args).ok_or_else(|| err("search needs a query"))?;
     let (idx, _, published, reason) = load_with_publication(args)?;
     let Some(published) = published else {
-        let v = unavailable_value("search", &reason.unwrap_or_else(|| "unknown".to_string()));
-        emit(&v, args);
+        if has(args, "--text") {
+            for line in unavailable_text() {
+                println!("{line}");
+            }
+        } else {
+            let v = unavailable_value("search", &reason.unwrap_or_else(|| "unknown".to_string()));
+            emit(&v, args);
+        }
         std::process::exit(4);
     };
     let top_k: u32 = opt(args, "--top-k")
@@ -62,7 +130,6 @@ pub fn run(args: &[String]) -> Result<()> {
     let with_open_args = has(args, "--open-args");
     let index = index_path(args).to_string_lossy().into_owned();
     let hits = search(&published, &idx, &query, phrase, top_k)?;
-    let query_hash = sha256_hex(query.as_bytes());
     let rendered: Vec<Value> = hits
         .iter()
         .map(|h| {
@@ -87,6 +154,11 @@ pub fn run(args: &[String]) -> Result<()> {
             hit_value
         })
         .collect();
+    if has(args, "--text") {
+        println!("{}", render_text(&published.generation, &index, &rendered));
+        return Ok(());
+    }
+    let query_hash = sha256_hex(query.as_bytes());
     let mut explain = vec![
         format!("pinned generation {}", published.generation),
         "FTS5 contentless prose index; role allowlist user/assistant; thinking and tool output excluded".to_string(),
@@ -114,7 +186,7 @@ pub fn run(args: &[String]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::open_args;
+    use super::{conflicting_text_flag, open_args, render_text, unavailable_text};
     use serde_json::json;
 
     #[test]
@@ -137,5 +209,85 @@ mod tests {
         assert!(!encoded.contains("QUERY_CANARY"));
         assert!(!encoded.contains("PROSE_CANARY"));
         assert!(!encoded.contains("synthetic.jsonl"));
+    }
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn test_text_conflicts_are_reported_before_index_access() {
+        for flag in ["--json", "--open-args", "--explain"] {
+            assert_eq!(
+                conflicting_text_flag(&args(&["TERM", "--text", flag])),
+                Some(flag)
+            );
+        }
+        assert_eq!(
+            conflicting_text_flag(&args(&[
+                "TERM", "--text", "--phrase", "--top-k", "3", "--index",
+                "dir with space/ase.index"
+            ])),
+            None
+        );
+        assert_eq!(
+            conflicting_text_flag(&args(&["TERM", "--json", "--open-args"])),
+            None
+        );
+    }
+
+    #[test]
+    fn test_text_render_prints_ordered_metadata_without_query_prose_or_source_path() {
+        let hits = vec![
+            json!({
+                "event": 7,
+                "span": "span:0:12:34",
+                "selector": "block-v1|first",
+                "role": "user",
+                "freshness": "fresh",
+                "query": "QUERY_CANARY",
+                "content": "PROSE_CANARY",
+                "path": "journal-canary.jsonl"
+            }),
+            json!({
+                "event": 9,
+                "span": "span:1:56:78",
+                "selector": "block-v1|second",
+                "role": "assistant",
+                "freshness": "stale"
+            }),
+        ];
+        let text = render_text("gen-0123456789abcdef", "dir with space/ase.index", &hits);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(
+            lines[0],
+            "search: 2 hit(s), generation=gen-0123456789abcdef, index=dir with space/ase.index"
+        );
+        assert_eq!(
+            lines[1],
+            "1. role=user span=span:0:12:34 freshness=fresh event=7 selector=block-v1|first"
+        );
+        assert_eq!(
+            lines[2],
+            "2. role=assistant span=span:1:56:78 freshness=stale event=9 selector=block-v1|second"
+        );
+        assert!(text.contains("display order only"));
+        assert!(!text.contains("QUERY_CANARY"));
+        assert!(!text.contains("PROSE_CANARY"));
+        assert!(!text.contains("journal-canary.jsonl"));
+        assert!(!text.contains("& $ase"));
+        assert!(!text.contains("ConvertFrom-Json"));
+    }
+
+    #[test]
+    fn test_unavailable_text_never_claims_zero_hits() {
+        let lines = unavailable_text();
+        assert_eq!(lines[0], "search: layer_unavailable");
+        assert!(lines.iter().any(|line| line.contains("--index")));
+        assert!(lines.iter().any(|line| line.contains("--layer all")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("--omp-root") && line.contains("--codex-root")));
+        assert!(lines.iter().all(|line| !line.contains("0 hit")));
     }
 }
