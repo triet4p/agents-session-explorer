@@ -13,16 +13,13 @@ fixed synthetic wire check and sends no session data. `ase llm` stores the
 non-secret API profile and the user-scoped API key used by that transport.
 
 **Publication state:** the latest published release tag is
-[`v0.4.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.4.0),
-a source prerelease from before the judge and evidence-bundle commands. Public
-source commit
-[`7c6000ba8bf9`](https://github.com/triet4p/agents-session-explorer/commit/7c6000ba8bf964ba2b454a0888ebb7de3b36ebed)
-adds the judge and evidence-bundle implementation and runnable synthetic
-fixtures under `fixtures/p4/`; it is a source publish, not a release, and its
-status text predates later local measurements. Those measurement records are
-workspace-local evidence and are not published release assets. This checkout
-does not contain the public `fixtures/p4/` tree; the commands below generate
-equivalent synthetic inputs under `.tmp/`.
+[`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0),
+a source prerelease from `main`. It includes the judge, the LLM API transport,
+the evidence-bundle export/verify/import/join commands and the runnable
+synthetic `ase-bundle-v1` fixtures under `fixtures/bundle/`. Gate and
+measurement records remain workspace-local evidence and are not published
+release assets; the commands below generate their own synthetic inputs under
+`.tmp/`.
 
 ## Design documentation
 
@@ -212,9 +209,10 @@ ase verify fixtures/bundle \
   --verdicts fixtures/bundle/verdicts.json --json
 ```
 
-The same synthetic tree is documented in `fixtures/bundle/README.md`. It uses
-the current `ase-bundle-v1` schema. The older public `fixtures/p4/` tree is not
-present in this checkout.
+The same synthetic tree is documented in `fixtures/bundle/README.md` and uses
+the current `ase-bundle-v1` schema. The earlier `fixtures/p4/` tree is kept
+only as the historical source publish; its phase-named schema is rejected by
+the current commands, so use `fixtures/bundle/` or regenerate.
 
 The `--local-map` JSON is never part of the bundle. It carries
 `schema: ase-local-sources-v1`, a pinned `snapshot` (`snapshot_id`,
@@ -549,9 +547,9 @@ assertion digest, and `verify` reopened 4,200/4,200 anchors. The experiment
 patch was reverted; the shipped CLI has no judge redaction option and keeps
 policy `none`. The 26-decision ablation is descriptive against frozen hand
 labels with no quality threshold, so no cohort quality verdict or
-historical-recap equivalence follows. Public source publishes the judge and
-evidence-bundle
-code and synthetic fixtures, not these measurement records.
+historical-recap equivalence follows. The published source includes the judge
+and evidence-bundle code and synthetic fixtures, not these measurement
+records.
 
 ## LLM API configuration (`ase llm`)
 
@@ -777,9 +775,9 @@ effort presence/omission, typed parse and confidence semantic, error/body
 redaction, redirect refusal without following, no retry, cold/warm cache per
 protocol, cache namespace separation on a shared store, zero-call
 `report`/`show`/`verify` paths, and refusal of a non-loopback profile without
-opt-in. It made no provider request and used no real key. The script and
-machine-readable result are
-`artifacts/sprint-6/ASE-S6-T5/smoke_t5.py` and `evidence-smoke-a1.json`.
+opt-in. It made no provider request and used no real key. Its script and
+machine-readable result are workspace-local measurement records and are not
+published release assets.
 
 ## Source coordinates
 

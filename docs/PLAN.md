@@ -12,11 +12,11 @@
 
 **[Sprint 5 — P2 thời gian/chi phí](sprint-plans/sprint-5.md) hoàn tất:** đã đối chiếu CLI với `stats.db` cho tháng 10/2026 UTC; không còn chênh lệch chưa giải thích. [Source prerelease `v0.4.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.4.0) trên `origin/main` tại `e881815`, cùng nội dung với cây tệp đã qua locked build và smoke. Tiếp theo: P3 đánh giá ngoại tuyến.
 
-**[Sprint 6 — P3 đánh giá ngoại tuyến](sprint-plans/sprint-6.md) hoàn tất:** gate P3 đạt trên cohort đã ghim với LLM phân đoạn và Judge; 1.400 cặp đã che thông tin, chạy lại không gọi API, mở lại 4.200/4.200 bản ghi bằng chứng. [Review độc lập R2 PASS](../artifacts/sprint-6/ASE-S6-T3/reviews/ASE-S6-T3-C1-R2.md). Chưa gắn với phiên bản phát hành.
+**[Sprint 6 — P3 đánh giá ngoại tuyến](sprint-plans/sprint-6.md) hoàn tất:** gate P3 đạt trên cohort đã ghim với LLM phân đoạn và Judge; 1.400 cặp đã che thông tin, chạy lại không gọi API, mở lại 4.200/4.200 bản ghi bằng chứng. [Review độc lập R2 PASS](../artifacts/sprint-6/ASE-S6-T3/reviews/ASE-S6-T3-C1-R2.md). Phát hành trong [`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0).
 
-**[Sprint 7 — P4 trao đổi bằng chứng](sprint-plans/sprint-7.md) hoàn tất:** export, verify, import verdict và đối chiếu skill/template chạy cục bộ trên pilot OMP đã ghim. Trích được bằng chứng cho 4/4 ứng viên; mở lại 19/19 bản ghi bằng chứng và xác minh 4/4 assertion đã nhận. [Deep review R2 PASS](../artifacts/sprint-7/ASE-S7-T6/reviews/ASE-S7-DEEP-R2.md). Chưa gắn với phiên bản phát hành.
+**[Sprint 7 — P4 trao đổi bằng chứng](sprint-plans/sprint-7.md) hoàn tất:** export, verify, import verdict và đối chiếu skill/template chạy cục bộ trên pilot OMP đã ghim. Trích được bằng chứng cho 4/4 ứng viên; mở lại 19/19 bản ghi bằng chứng và xác minh 4/4 assertion đã nhận. [Deep review R2 PASS](../artifacts/sprint-7/ASE-S7-T6/reviews/ASE-S7-DEEP-R2.md). Phát hành trong [`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0).
 
-**Trạng thái phát hành:** [`v0.4.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.4.0) vẫn là bản có tag mới nhất. Mã P3/P4 và fixture tổng hợp đã công khai trên [`main` tại `7c6000b`](https://github.com/triet4p/agents-session-explorer/commit/7c6000ba8bf964ba2b454a0888ebb7de3b36ebed), tách khỏi hồ sơ sprint nội bộ. Chuẩn hóa T2 đã push sạch lên [`main` tại `fc73fbf`](https://github.com/triet4p/agents-session-explorer/commit/fc73fbf3373612f1c8f977fd9e03eea3bafa55fc): 4 commit fast-forward, giữ cả `fixtures/p4/*` và `fixtures/bundle/*`, không kèm `artifacts/` nội bộ mới.
+**Trạng thái phát hành:** [`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0) là bản có tag mới nhất, source prerelease từ `main`, gồm P3/P4, lớp Judge/LLM API, evidence bundle và refactor Sprint 8. Tag nằm trên commit phát hành tại `origin/main`; mã, fixture tổng hợp và tài liệu công khai nằm trong cùng cây, tách khỏi hồ sơ sprint nội bộ. `v0.4.0` là bản trước đó và không chứa các lệnh judge/evidence-bundle. Chuẩn hóa T2 đã push sạch lên [`main` tại `fc73fbf`](https://github.com/triet4p/agents-session-explorer/commit/fc73fbf3373612f1c8f977fd9e03eea3bafa55fc): 4 commit fast-forward, giữ cả `fixtures/p4/*` và `fixtures/bundle/*`, không kèm `artifacts/` nội bộ mới.
 
 **Đồng bộ toàn diện (chủ dự án duyệt):** viết lại vị trí `main` local để loại `artifacts/` nội bộ khỏi dòng public, giữ nguyên code, commit toàn bộ `docs/` hiện có, ignore scratch/build/evidence nội bộ; `git status` cuối phải sạch và đồng bộ với `origin/main`.
 
@@ -27,7 +27,7 @@
 
 ## Chuẩn hóa cấu trúc mã
 
-**[Sprint 8 — Refactor theo ranh giới nghiệp vụ](sprint-plans/sprint-8.md) hoàn tất:** đã tách CLI, adapter scan, Judge evaluation, model `ase-task` và bundle export/verify. Cây tích hợp `d435ce5` đạt nghiệm thu offline và [deep review R1 PASS](../artifacts/sprint-8/ASE-S8-T12/deep-review-r1.md). `main.rs` còn 204 dòng; giữ nguyên hành vi trong phạm vi đã đối chiếu. Không gọi LLM provider thật, không chạy lại cohort, không push/tag.
+**[Sprint 8 — Refactor theo ranh giới nghiệp vụ](sprint-plans/sprint-8.md) hoàn tất:** đã tách CLI, adapter scan, Judge evaluation, model `ase-task` và bundle export/verify. Cây tích hợp `d435ce5` đạt nghiệm thu offline và [deep review R1 PASS](../artifacts/sprint-8/ASE-S8-T12/deep-review-r1.md). `main.rs` còn 204 dòng; giữ nguyên hành vi trong phạm vi đã đối chiếu. Không gọi LLM provider thật, không chạy lại cohort. Bản phát hành [`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0) đóng gói snapshot này.
 
 ## Phạm vi các mốc
 

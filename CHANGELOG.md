@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-27
+
 ### Added
 
 - Added `ase join skill-gap --store FILE --catalog FILE --bundle DIR --local-map FILE` for verified evidence bundles. It reopens the cited bundle evidence, excludes assertions with stale bundle identity, judged content, provenance or spans, and joins only verified assertions to a user-supplied exact-kind/key/alias catalog. It reports `match`, `no_match`, `ambiguous` and `insufficient_input`, honors catalog completeness, keeps a path-free verdict → occurrence → span trace, treats a catalog miss as no evidence that a skill exists or should be created, and never writes a store, calls a model or measures a gate.
@@ -38,7 +40,7 @@
 
 ### Notes
 
-- Public source commit `7c6000ba8bf9` published the judge and evidence-bundle implementation with runnable synthetic fixtures under `fixtures/p4/`; it is a source publish, not a release. The latest published release, `v0.4.0`, is an earlier source prerelease that predates those commands. Gate and measurement records remain workspace-local evidence and are not release assets.
+- `v0.5.0` is a source prerelease from `main` at the release commit; it is not a gate or quality verdict. Gate and measurement records remain workspace-local evidence and are not release assets. Public source commit `7c6000ba8bf9` first published the judge and evidence-bundle implementation with synthetic fixtures under `fixtures/p4/`; `v0.4.0` predates those commands. The current runnable bundle fixture is the `ase-bundle-v1` tree under `fixtures/bundle/`; the phase-named `fixtures/p4/` tree is retained only as historical source and is rejected by the current schema. The CLI, stock-adapter, `ase-task`, `ase-judge` and evidence-bundle module layout was reorganized for maintainability with no change to commands, flags, output, exit codes, schema, serialization or public Rust API.
 
 ## [0.4.0] - 2026-11-23
 

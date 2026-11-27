@@ -30,8 +30,9 @@ ase join skill-gap --store .tmp/bundle-store.json \
 ```
 
 All three commands are local: no network, model, catalog service or gate
-measurement is involved. The older public `fixtures/p4/` tree is not present in
-this checkout; this tree is the in-repository equivalent.
+measurement is involved. This tree uses the current `ase-bundle-v1` schema. The
+earlier `fixtures/p4/` tree is retained only as the historical source publish;
+its phase-named schema is rejected by the current commands.
 
 ## Regenerating
 
