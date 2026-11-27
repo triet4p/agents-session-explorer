@@ -2,6 +2,10 @@
 
 `agents-session-explorer` là CLI cục bộ để tìm, tái dựng và đối chiếu phiên OMP/Codex từ bằng chứng có thể mở lại. [Phạm vi và gate](SCOPE.md#gates) · [Lộ trình gốc](INITIALIZATION.md#13-lộ-trình).
 
+## Đánh giá Sprint 11
+
+**[Sprint 11 — Đánh giá và phát hành binary Windows x64](sprint-plans/sprint-11.md) — hoàn tất; phát hành trên bằng chứng fixture/máy build.** Đánh giá kỹ thuật ban đầu là NO-GO vì gate Windows sạch chưa đạt và còn rủi ro giấy phép/vận hành. Chủ dự án đã chấp nhận rõ ràng bằng chứng fixture/máy build và duyệt phát hành binary Windows x64 `v0.7.0`. Bản phát hành dùng rebuild đã khử đường dẫn build, notices bên thứ ba đã sửa và hướng dẫn dùng `certutil`; các giới hạn chưa kiểm và khoảng trống giấy phép được giữ nguyên trong [đánh giá chi tiết](WINDOWS_BINARY_ASSESSMENT.md) và README. Source-only vẫn là phương án mặc định cho người dùng cần build tại chỗ.
+
 ## Sprint vừa hoàn tất
 
 **[Sprint 10 — Thử tra cứu phiên trong công việc thật](sprint-plans/sprint-10.md) — hoàn tất theo nhánh dự phòng.** Hướng dẫn và diễn tập trên fixture đã qua kiểm; pilot thật không chạy vì không có người tham gia. [Tổng hợp](PILOT_SYNTHESIS.md) phân biệt bằng chứng tổng hợp với các câu hỏi chưa được kiểm trên corpus thật. Không suy ra trải nghiệm người dùng thật hoặc cô lập mạng.
@@ -26,7 +30,7 @@
 
 **[Sprint 7 — P4 trao đổi bằng chứng](sprint-plans/sprint-7.md) hoàn tất:** export, verify, import verdict và đối chiếu skill/template chạy cục bộ trên pilot OMP đã ghim. Trích được bằng chứng cho 4/4 ứng viên; mở lại 19/19 bản ghi bằng chứng và xác minh 4/4 assertion đã nhận. [Deep review R2 PASS](../artifacts/sprint-7/ASE-S7-T6/reviews/ASE-S7-DEEP-R2.md). Phát hành trong [`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0).
 
-**Trạng thái phát hành:** [`v0.6.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.6.0) là bản có tag mới nhất, source prerelease từ `main` thêm helper điều hướng Sprint 9 (`--open-args`, `--session-args`, từ chối ID mơ hồ) trên nền `v0.5.1`. Không có binary asset; gate và bản ghi đo đạc còn là bằng chứng workspace-local.
+**Trạng thái phát hành:** [`v0.7.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.7.0) là bản có tag mới nhất. Đây là bản đầu tiên phát hành binary Windows x64 (`ase-0.7.0-windows-x64.zip`, unsigned, kèm `SHA256SUMS.txt`), build lại từ đúng tag với đường dẫn build đã khử; code không đổi hành vi so với `v0.6.0`. Bản phát hành dựa trên chấp nhận của chủ dự án đối với bằng chứng fixture/máy build; chưa kiểm máy Windows sạch, chưa ký, và dự án chưa có grant giấy phép. [`v0.6.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.6.0) vẫn là source prerelease trước đó.
 
 **Đồng bộ toàn diện (chủ dự án duyệt):** viết lại vị trí `main` local để loại `artifacts/` nội bộ khỏi dòng public, giữ nguyên code, commit toàn bộ `docs/` hiện có, ignore scratch/build/evidence nội bộ; `git status` cuối phải sạch và đồng bộ với `origin/main`.
 

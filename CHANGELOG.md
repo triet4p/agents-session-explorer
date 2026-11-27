@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-27
+
+### Added
+
+- Published the first Windows x64 binary release, `ase-0.7.0-windows-x64.zip`, with `SHA256SUMS.txt`. The archive contains `ase.exe`, `README.md` and `THIRD_PARTY_NOTICES.txt`; it is unsigned and requires the Microsoft Visual C++ 2015–2022 Redistributable (x64) for `VCRUNTIME140.dll`. The binary builds on the `v0.6.0` behavior; no command, flag, output, exit code or schema changed.
+- Added `THIRD_PARTY_NOTICES.txt` at the repository root and inside the archive. It lists exactly the 59 third-party packages resolved by `Cargo.lock`, includes the previously missing `cc 1.11.2`, removes a duplicate `generic-array 0.14.7` row, and marks build-time-only and unused-target crates consistently.
+
+### Changed
+
+- Rewrote `README.md` as a product README: download and verification steps, first local index, build from source, command map, data model, privacy defaults, uninstall and limitations. Sprint history, research narrative and stale Windows integration notes were removed.
+- The release binary is built with Rust `--remap-path-prefix` and MSVC `/pathmap` so the image does not embed the build host's source paths. Rebuilding does not reproduce the published digest: PE timestamps and PDB identity differ between runs.
+- Release verification instructions use `certutil -hashfile` instead of `Get-FileHash`/`Get-AuthenticodeSignature`, which are unavailable or broken on the tested host, and state the unsigned status without promising SmartScreen acceptance.
+
+### Notes
+
+- `v0.7.0` was accepted by the project owner on fixture and build-host evidence. It was not tested on a clean Windows machine, a new user profile, a restored VM, Windows 10/Server, ARM64 or a blocked network, and SmartScreen/enterprise policy behavior is unmeasured.
+- The repository still has no `LICENSE` or `NOTICE` file and no workspace `license` field. No license grant for the ASE source or binary is made by this release; ask the project owner before redistributing.
+- The version is `0.7.0` because this is the first binary distribution channel; `0.6.0` remains the last source-only prerelease.
+
 ## [0.6.0] - 2026-11-27
 
 ### Added
