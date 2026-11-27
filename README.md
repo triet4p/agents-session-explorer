@@ -13,8 +13,10 @@ fixed synthetic wire check and sends no session data. `ase llm` stores the
 non-secret API profile and the user-scoped API key used by that transport.
 
 **Publication state:** the latest published release tag is
-[`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0),
-a source prerelease from `main`. It includes the judge, the LLM API transport,
+[`v0.5.1`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.1),
+a source prerelease from `main` that republishes the `v0.5.0` tree with the
+`ase-cli` module declarations in their final order; commands, output, exit
+codes and schemas are unchanged. It includes the judge, the LLM API transport,
 the evidence-bundle export/verify/import/join commands and the runnable
 synthetic `ase-bundle-v1` fixtures under `fixtures/bundle/`. Gate and
 measurement records remain workspace-local evidence and are not published

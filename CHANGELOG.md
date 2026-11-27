@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-27
+
+### Fixed
+
+- Fixed the `v0.5.0` source snapshot, which omitted the final `ase-cli` module declaration ordering: `v0.5.1` publishes the verified integrated tree. Commands, flags, help text, stdout/stderr, exit codes, schemas, serialization and public Rust API are identical between `v0.5.0` and `v0.5.1`.
+
+### Notes
+
+- `v0.5.1` is a source prerelease from `main` and replaces `v0.5.0` as the newest tag; `v0.5.0` remains published and unchanged. Gate and measurement records remain workspace-local evidence and are not release assets.
+
 ## [0.5.0] - 2026-11-27
 
 ### Added

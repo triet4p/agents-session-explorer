@@ -1,6 +1,6 @@
 # Sprint 8 — Refactor theo ranh giới nghiệp vụ
 
-**Trạng thái:** hoàn tất; T1–T12 đạt, cây tích hợp `d435ce5` đã nghiệm thu và qua deep review, và được đóng gói trong [`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0). **Mục tiêu:** tách các module theo nghiệp vụ và làm rõ trách nhiệm trong các file dài đã chọn, không đổi hành vi.
+**Trạng thái:** hoàn tất; T1–T12 đạt, cây tích hợp `d435ce5` đã nghiệm thu và qua deep review, và được đóng gói trong [`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0), rồi phát hành lại nguyên cây (không đổi hành vi) trong [`v0.5.1`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.1). **Mục tiêu:** tách các module theo nghiệp vụ và làm rõ trách nhiệm trong các file dài đã chọn, không đổi hành vi.
 
 ## Phạm vi và gate
 
