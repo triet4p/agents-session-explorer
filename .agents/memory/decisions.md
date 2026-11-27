@@ -100,3 +100,11 @@
 **Reason:** `main.rs` đang giữ cả vận hành bằng chứng, fixture và điều phối LLM; các nhóm này có vòng đời kiểm thử khác nhau. Di chuyển theo nhóm cho phép so từng bề mặt CLI với baseline mà không đưa thêm biến số từ parser hay schema.
 
 **Consequences:** Refactor không đổi help, exit code, output, schema hay cache identity. Xác minh LLM offline là mặc định; ngân sách provider thật và điều kiện ngoại lệ thuộc [Sprint 8](../../docs/sprint-plans/sprint-8.md).
+
+## [2026-11-27] Apply the MIT license to the current tree
+
+**Decision:** The project owner chose MIT for the current source tree. `LICENSE` names Le Minh Triet as copyright holder with year 2026, and the workspace manifest sets `license = "MIT"` with every member crate inheriting it. The `v0.7.0` tag and its published archive stay unchanged, and `THIRD_PARTY_NOTICES.txt` is not modified.
+
+**Basis:** Explicit project-owner decision recorded 2026-11-27. Holder and year are taken from repository history: all commits are authored by Le Minh Triet in 2026. No other copyright holder is asserted.
+
+**Consequences:** README, CHANGELOG and current status documentation describe the MIT grant for the current tree while retaining the historical no-license facts for `v0.7.0`. Third-party notices continue to apply to bundled components.

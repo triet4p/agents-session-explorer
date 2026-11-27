@@ -4,7 +4,9 @@
 
 ## Đánh giá Sprint 11
 
-**[Sprint 11 — Đánh giá và phát hành binary Windows x64](sprint-plans/sprint-11.md) — hoàn tất; phát hành trên bằng chứng fixture/máy build.** Đánh giá kỹ thuật ban đầu là NO-GO vì gate Windows sạch chưa đạt và còn rủi ro giấy phép/vận hành. Chủ dự án đã chấp nhận rõ ràng bằng chứng fixture/máy build và duyệt phát hành binary Windows x64 `v0.7.0`. Bản phát hành dùng rebuild đã khử đường dẫn build, notices bên thứ ba đã sửa và hướng dẫn dùng `certutil`; các giới hạn chưa kiểm và khoảng trống giấy phép được giữ nguyên trong [đánh giá chi tiết](WINDOWS_BINARY_ASSESSMENT.md) và README. Source-only vẫn là phương án mặc định cho người dùng cần build tại chỗ.
+**[Sprint 11 — Đánh giá và phát hành binary Windows x64](sprint-plans/sprint-11.md) — hoàn tất; phát hành trên bằng chứng fixture/máy build.** Đánh giá kỹ thuật ban đầu là NO-GO vì gate Windows sạch chưa đạt và còn rủi ro giấy phép/vận hành. Chủ dự án đã chấp nhận rõ ràng bằng chứng fixture/máy build và duyệt phát hành binary Windows x64 `v0.7.0`. Bản phát hành dùng rebuild đã khử đường dẫn build, notices bên thứ ba đã sửa và hướng dẫn dùng `certutil`; các giới hạn chưa kiểm và khoảng trống giấy phép tại thời điểm phát hành được giữ nguyên trong [đánh giá chi tiết](WINDOWS_BINARY_ASSESSMENT.md) và README trong archive `v0.7.0`. Source-only vẫn là phương án mặc định cho người dùng cần build tại chỗ.
+
+**Cập nhật hiện tại (2026-11-27):** cây nguồn hiện tại có `LICENSE` MIT (Copyright (c) 2026 Le Minh Triet), với `license = "MIT"` trong manifest workspace và kế thừa ở mọi crate. Tag và archive `v0.7.0` giữ nguyên như đã phát hành; `THIRD_PARTY_NOTICES.txt` không đổi. Xem [CHANGELOG](../CHANGELOG.md) và [đánh giá](WINDOWS_BINARY_ASSESSMENT.md).
 
 ## Sprint vừa hoàn tất
 

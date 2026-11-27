@@ -2,13 +2,15 @@
 
 **Trạng thái:** đánh giá kỹ thuật Sprint 11 (A6/T6) và quyết định phát hành, ngày 2026-11-27. Kết luận kỹ thuật ban đầu là **NO-GO** vì gate máy sạch (A5) chưa đạt; chủ dự án sau đó **chấp nhận rõ ràng bằng chứng fixture và máy build** và duyệt phát hành binary Windows x64 cho `v0.7.0`. Tài liệu này ghi cả phần đã kiểm, phần chưa kiểm, quyết định và các rủi ro còn lại. Việc chấp nhận này không biến các giới hạn chưa kiểm thành đã kiểm, và không tạo ra grant giấy phép cho dự án.
 
+**Cập nhật trạng thái hiện tại (2026-11-27):** cây nguồn hiện tại đã được cấp giấy phép MIT qua `LICENSE` (Copyright (c) 2026 Le Minh Triet); manifest workspace và mọi crate khai báo `license = "MIT"`. Các nhận định về việc `v0.7.0` không có `LICENSE`/`NOTICE` ở trên vẫn đúng với tag và archive đã phát hành; nội dung/hash archive không đổi. `THIRD_PARTY_NOTICES.txt` không thay đổi.
+
 ## 1. Quyết định
 
 - Chủ dự án đã duyệt phát hành một asset binary Windows x64 cho `v0.7.0`, trên cơ sở bằng chứng build/đóng gói/diễn tập trên **máy build vật lý** với dữ liệu tổng hợp. Không có người nhận độc lập, không có máy sạch, không có VM snapshot.
 - Asset: `ase-0.7.0-windows-x64.zip` (kèm `SHA256SUMS.txt`), chứa `ase.exe`, `README.md`, `THIRD_PARTY_NOTICES.txt`.
 - Trạng thái ký: **unsigned**. Không có chữ ký Authenticode và không có tuyên bố về SmartScreen/reputation. Hash chỉ chứng minh byte trùng giá trị tham chiếu; checksum phát hành cùng kênh không tự xác thực nhà phát hành.
 - Chưa kiểm: máy Windows sạch/mới cài, profile mới, VM khôi phục snapshot, trường hợp **thiếu** `VCRUNTIME140.dll`, SmartScreen/AppLocker/WDAC/Defender policy trên máy nhận, Windows 10/Server/ARM64, PowerShell 7, chạy dài hạn, mạng bị chặn.
-- Giấy phép: cây nguồn `v0.7.0` không có `LICENSE`/`NOTICE`, manifest workspace không có trường `license`. Không có grant nào cho source/binary của ASE được tạo bởi tài liệu này; chủ dự án phát hành theo quyết định của mình. Đây là khoảng trống pháp lý cần chủ dự án xử lý, không phải điều tài liệu này có thể tự bổ sung.
+- Giấy phép: cây nguồn `v0.7.0` không có `LICENSE`/`NOTICE`, manifest workspace không có trường `license`. Không có grant nào cho source/binary của ASE được tạo bởi tài liệu này; chủ dự án phát hành theo quyết định của mình. Nhận định này mô tả đúng tag/archive `v0.7.0`; cây nguồn hiện tại có cấp MIT, xem cập nhật trạng thái ở đầu tài liệu.
 - Người chịu trách nhiệm: chủ dự án (người duyệt phát hành) tự chịu trách nhiệm duy trì; không có cá nhân/nhóm thứ ba nào được gán trách nhiệm vận hành.
 
 ## 2. Ứng viên nội bộ đã đánh giá (nguồn `v0.6.0`)
@@ -75,7 +77,7 @@ Kết quả đo trên đúng asset phát hành (chi tiết §8): build remap s�
 ## 5. Vì sao ban đầu NO-GO, và điều gì đã thay đổi trước khi phát hành
 
 1. **A5 chưa đạt.** Không có receiver độc lập trên Windows sạch; chưa kiểm máy thiếu `VCRUNTIME140.dll` và policy/SmartScreen. T5 chỉ là nhánh dự phòng, review ghi “PASS (fallback-only)”. **Thay đổi:** chủ dự án chấp nhận bằng chứng máy build/fixture và duyệt phát hành; giới hạn vẫn còn nguyên trong §1/§4 và README.
-2. **Quyền phân phối của dự án chưa xác lập.** **Chưa giải quyết:** không có `LICENSE`/`NOTICE`, không có trường `license`. Tài liệu và README nêu rõ không có grant nào được tạo; quyết định phát hành là của chủ dự án, và người dùng phải liên hệ chủ dự án trước khi tái phân phối.
+2. **Quyền phân phối của dự án chưa xác lập tại thời điểm phát hành.** **Đã xử lý cho cây nguồn hiện tại:** có `LICENSE` MIT và `license = "MIT"` trong manifest workspace/crate; README hiện tại nêu grant MIT. Tag/archive `v0.7.0` và `THIRD_PARTY_NOTICES.txt` không đổi; README trong archive `v0.7.0` vẫn ghi không có grant.
 3. **Thông báo bên thứ ba chưa chính xác.** **Đã sửa:** 59 dòng duy nhất, thêm `cc 1.11.2`, bỏ dòng `generic-array` trùng, nêu quy tắc build-time-only và unused-target nhất quán.
 4. **Hướng dẫn chưa chạy nguyên văn.** **Đã thay bằng hướng dẫn phát hành dùng `certutil -hashfile`** (có sẵn trên Windows, không phụ thuộc module PowerShell), giữ nguyên tắc không tắt/bỏ qua bảo vệ Windows, và đã chạy lại trên máy build. Chưa chứng minh trên máy sạch.
 5. **Unsigned và chưa kiểm chính sách.** **Chủ dự án chấp nhận unsigned**; README/asset ghi rõ unsigned và không hứa SmartScreen chấp nhận.
@@ -84,7 +86,7 @@ Kết quả đo trên đúng asset phát hành (chi tiết §8): build remap s�
 
 ## 6. Rủi ro còn lại và việc cần làm cho bản sau
 
-1. Chọn và ghi giấy phép cho source/binary của ASE, hoặc giữ source-only nếu không muốn cấp quyền. Đây là khoảng trống pháp lý lớn nhất.
+1. Giấy phép cho source/binary của ASE: cây nguồn hiện tại có `LICENSE` MIT; tag/archive `v0.7.0` vẫn giữ nguyên trạng thái đã phát hành, không kèm grant của dự án. `THIRD_PARTY_NOTICES.txt` không đổi.
 2. Kiểm trên máy Windows sạch (VM snapshot hoặc Windows mới cài, profile mới, tài khoản thường, không dev tools), gồm trường hợp thiếu VC++ runtime và policy/SmartScreen thực tế.
 3. Quyết định ký Authenticode hoặc ghi chính sách chấp nhận unsigned; nếu ký, bytes đổi → hash mới → kiểm lại.
 4. Đo lại và mở rộng phạm vi nền tảng (Windows 10/Server, ARM64) nếu muốn tuyên bố hỗ trợ rộng hơn.

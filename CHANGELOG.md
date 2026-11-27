@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Licensed the current source tree under [MIT](LICENSE) with copyright held by Le Minh Triet; the workspace manifest declares `license = "MIT"` and every crate inherits it. The `v0.7.0` tag and archive are unchanged.
+
 ## [0.7.0] - 2026-11-27
 
 ### Added

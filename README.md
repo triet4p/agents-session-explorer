@@ -202,8 +202,6 @@ Run any subcommand with `--help` for its exact flags, for example
   byte-reproducible: PE timestamps and PDB identity change per build.
 - No real-user pilot or real corpus was run for this release. Counts quoted in
   older design records are fixture measurements and are not product claims.
-- The project does not declare a license (see below), so no permission to
-  redistribute the ASE source or binary is granted by this document.
 
 ## Uninstall
 
@@ -224,10 +222,9 @@ removing `ase`.
 
 ## License
 
-This repository has **no `LICENSE` or `NOTICE` file**, and the workspace manifests
-declare no `license` field. No license terms are granted for the `agents-session-explorer`
-source or for the `ase` binary by this README or by publication of the repository.
-The project owner must be asked for permission before redistributing either.
+This project is licensed under the [MIT License](LICENSE), with copyright held by
+Le Minh Triet (2026). The `v0.7.0` tag and its published archive remain as released,
+without a project license file.
 
 Third-party components keep their own licenses. `THIRD_PARTY_NOTICES.txt`, also
 inside the release archive, lists the exact crates and C sources compiled into the

@@ -2,6 +2,7 @@
 name = "ase-ingest"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 ase-core = { path = "../ase-core" }
