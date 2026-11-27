@@ -30,6 +30,7 @@ release assets; the commands below generate their own synthetic inputs under
 - [Data contracts](docs/DATA_CONTRACTS.md) — provenance, source coordinates, and derived data.
 - [Derived search verification](artifacts/P0b/summary.md) — fixture proofs, release measurements and limits.
 - [Initialization record](docs/INITIALIZATION.md) — original design and corpus observations.
+- [Participant pilot guide](docs/PARTICIPANT_PILOT_GUIDE.md) — consent-gated, single-source run from the `v0.6.0` tag with explicit roots and local-only cleanup.
 
 ## Build
 
@@ -118,6 +119,8 @@ New-Item -ItemType Directory -Force -Path $myCodex | Out-Null
 # expected to throw "empty root" — that is the intended, explicit choice.
 # Re-run step 4 with --omp-root $myOmp --codex-root $myCodex and a new --index.
 ```
+
+For a consented single-source pilot, use the [participant pilot guide](docs/PARTICIPANT_PILOT_GUIDE.md): the fixture above asserts both roots non-empty, but a real run may have exactly one deliberately excluded root that exists and is empty.
 
 **4. Index and reconcile counts by source.** Compare the `index` report with
 a plain file listing of each root; zero is only correct for a root you

@@ -2,7 +2,11 @@
 
 `agents-session-explorer` là CLI cục bộ để tìm, tái dựng và đối chiếu phiên OMP/Codex từ bằng chứng có thể mở lại. [Phạm vi và gate](SCOPE.md#gates) · [Lộ trình gốc](INITIALIZATION.md#13-lộ-trình).
 
-## Sprint tiếp theo
+## Sprint vừa hoàn tất
+
+**[Sprint 10 — Thử tra cứu phiên trong công việc thật](sprint-plans/sprint-10.md) — hoàn tất theo nhánh dự phòng.** Hướng dẫn và diễn tập trên fixture đã qua kiểm; pilot thật không chạy vì không có người tham gia. [Tổng hợp](PILOT_SYNTHESIS.md) phân biệt bằng chứng tổng hợp với các câu hỏi chưa được kiểm trên corpus thật. Không suy ra trải nghiệm người dùng thật hoặc cô lập mạng.
+
+## Mốc vừa hoàn tất
 
 **[Sprint 9 — Tra cứu phiên cục bộ từ lần dùng đầu tiên](sprint-plans/sprint-9.md) — hoàn tất.** Ứng viên `03adb6b` đã qua nghiệm thu độc lập trên fixture; phát hành trong [`v0.6.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.6.0) (source prerelease từ `main`). Không có binary, không pilot người dùng/corpus thật, và không kiểm outbound bị chặn.
 
