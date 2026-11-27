@@ -40,6 +40,154 @@ cargo build --release --locked
 
 Rust 1.91.1 or newer. Produces `target/release/ase` (`ase.exe` on Windows).
 
+## Quickstart — first local index on Windows (PowerShell)
+
+This path builds the `v0.5.1` source with its lockfile and indexes a synthetic
+fixture through **explicit roots only**. It does not read your real session
+roots, change the CLI or its defaults, or need any model/network provider.
+Prerequisites: Windows x64, Rust 1.91.1+, `git`, and PowerShell 7 (Windows
+PowerShell 5.1 also works).
+
+**1. Get the tagged source and build it locked.** `$Base` is the only path you
+need to change if you want the scratch tree somewhere else.
+
+```powershell
+$Base = Join-Path $HOME 'ase-quickstart'
+$Src  = Join-Path $Base 'src'
+$Work = Join-Path $Base 'work'
+New-Item -ItemType Directory -Force -Path $Work | Out-Null
+
+git clone --depth 1 --branch v0.5.1 https://github.com/triet4p/agents-session-explorer.git $Src
+if ($LASTEXITCODE -ne 0) { throw 'clone failed' }
+Push-Location $Src
+cargo build --release --locked
+if ($LASTEXITCODE -ne 0) { throw 'locked build failed' }
+$ase = Join-Path $Src 'target\release\ase.exe'
+Pop-Location
+```
+
+If you already have this repository checked out locally, replace `git clone`
+with a tag export, for example
+`git -C <repo> archive v0.5.1 | tar -x -C $Src` (`tar` ships with Windows).
+Both yield the same `Cargo.lock` and source tree; the build stays `--locked`.
+
+**2. Generate a synthetic fixture and name explicit roots.** `ase fixture`
+writes only below `--out`: `omp\synthetic.jsonl` plus `codex\synthetic.jsonl`
+and its zstd copy `codex\synthetic.jsonl.zst`.
+
+```powershell
+$fixture = Join-Path $Work 'fixture'
+& $ase fixture --out $fixture
+if ($LASTEXITCODE -ne 0) { throw 'fixture failed' }
+
+$ompRoot   = Join-Path $fixture 'omp'
+$codexRoot = Join-Path $fixture 'codex'
+$index     = Join-Path $Work 'ase.index'
+```
+
+**3. Preflight before indexing.** Never omit `--omp-root` and `--codex-root`:
+the defaults read `ASE_OMP_ROOT` / `ASE_CODEX_ROOT`, otherwise
+`$HOME\.omp\agent\sessions` and `$HOME\.codex\sessions`. Without explicit
+roots you can index your real profile by accident. A missing root and an
+existing but empty root both produce `files=0`, `events=0` and
+`publication.status=ready` — `index` does not distinguish them — so check
+before indexing and stop on either case.
+
+```powershell
+function Assert-AseRoot {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        throw "missing root: $Path"
+    }
+    if (-not (Get-ChildItem -LiteralPath $Path -Recurse -File)) {
+        throw "empty root: $Path"
+    }
+}
+Assert-AseRoot $ompRoot
+Assert-AseRoot $codexRoot
+```
+
+For your own corpus, pass both roots explicitly and create an empty directory
+for any source you are **not** selecting, rather than letting the default
+root stand in for it:
+
+```powershell
+$myOmp   = 'C:\path\to\my\omp\sessions'   # source you selected
+$myCodex = Join-Path $Work 'codex-empty'  # selected out: empty on purpose
+New-Item -ItemType Directory -Force -Path $myCodex | Out-Null
+# Assert-AseRoot $myOmp is expected to pass; Assert-AseRoot $myCodex is
+# expected to throw "empty root" — that is the intended, explicit choice.
+# Re-run step 4 with --omp-root $myOmp --codex-root $myCodex and a new --index.
+```
+
+**4. Index and reconcile counts by source.** Compare the `index` report with
+a plain file listing of each root; zero is only correct for a root you
+deliberately selected as empty.
+
+```powershell
+$indexJson = & $ase index --layer all --omp-root $ompRoot --codex-root $codexRoot --index $index --json | Out-String
+if ($LASTEXITCODE -ne 0) { throw 'index failed' }
+$indexJson | Set-Content -LiteralPath (Join-Path $Work 'index.json')
+$indexed = $indexJson | ConvertFrom-Json
+
+$ompFiles   = @(Get-ChildItem -LiteralPath $ompRoot -Recurse -File).Count
+$codexFiles = @(Get-ChildItem -LiteralPath $codexRoot -Recurse -File).Count
+$zstdFiles  = @(Get-ChildItem -LiteralPath $codexRoot -Recurse -File -Filter '*.zst').Count
+[pscustomobject]@{
+    status     = $indexed.publication.status
+    files      = $indexed.files
+    omp        = "$ompFiles / $($indexed.omp_files)"
+    codex      = "$codexFiles / $($indexed.codex_files)"
+    zstd       = "$zstdFiles / $($indexed.zstd_files)"
+    events     = $indexed.events
+    sessions   = $indexed.sessions
+    generation = $indexed.publication.generation
+}
+```
+
+For the fixture expect `files=3`, `omp_files=1`, `codex_files=2`,
+`zstd_files=1`, `events=22`, `sessions=3`, `malformed_lines_preserved=1` and
+`status=ready`. If any count differs from the directory listing, stop: the
+index does not cover the roots you listed. `malformed_lines_preserved=1` is
+expected because the fixture intentionally contains one invalid JSON line.
+`codex_files` counts every file in the Codex root (JSONL and zstd);
+`zstd_files` is the compressed subset of that same count.
+
+**5. Search and open from one hit.** `search` returns coordinates and a
+top-level `generation`. Take `event` and `selector` from the **same hit** and
+that generation from the same response; do not combine fields from different
+hits or open the transcript to assemble them.
+
+```powershell
+$searchJson = & $ase search 'SYNTHETIC USER TOKEN' --index $index --json --explain | Out-String
+if ($LASTEXITCODE -ne 0) { throw 'search failed' }
+$found = $searchJson | ConvertFrom-Json
+if ($found.status -ne 'ok' -or $found.count -lt 1) { throw 'no hits or layer unavailable' }
+if ($found.generation -ne $indexed.publication.generation) { throw 'generation changed between index and search' }
+$hit = $found.hits[0]
+
+& $ase open --event $hit.event --selector $hit.selector --generation $found.generation --index $index --json
+if ($LASTEXITCODE -ne 0) { throw 'open failed' }
+```
+
+Expect `status=verified_against_index_snapshot`,
+`raw_span_hash_match=true` and `block_digest_match=true`. `search` and `open`
+print metadata only; `--content` is the sole opt-in for source text. A
+generation from another index is refused before raw bytes are read, and
+edited raw bytes make `open` report `unverified`. `session_local` is an
+internal index number, not a `show session:<ID>` selector.
+
+**6. Clean up derived data only.** Keep every path inside `$Work`; never
+delete a source root as part of cleanup. `--layer all` writes the pointer
+sidecar `<index>.pub.json` and a `generations\` directory next to the index
+path; the `--index` path itself is a base name, not a single file.
+
+```powershell
+Remove-Item -LiteralPath "$index.pub.json" -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath (Join-Path $Work 'generations') -Recurse -Force -ErrorAction SilentlyContinue
+# Source journals under $fixture (and your own corpus) are left untouched.
+```
+
 ## v0.2.0 integration on Windows x64
 
 `resolve task:` needs an OMP runtime that records dispatch tracking; sessions
