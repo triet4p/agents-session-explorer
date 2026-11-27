@@ -4,6 +4,8 @@
 
 **Cập nhật trạng thái hiện tại (2026-11-27):** cây nguồn hiện tại đã được cấp giấy phép MIT qua `LICENSE` (Copyright (c) 2026 Le Minh Triet); manifest workspace và mọi crate khai báo `license = "MIT"`. Các nhận định về việc `v0.7.0` không có `LICENSE`/`NOTICE` ở trên vẫn đúng với tag và archive đã phát hành; nội dung/hash archive không đổi. `THIRD_PARTY_NOTICES.txt` không thay đổi.
 
+**Cập nhật trạng thái hiện tại (2026-11-28):** `v0.8.0` đã phát hành trên bằng chứng fixture/máy build, với asset `ase-0.8.0-windows-x64.zip` gồm `ase.exe`, `README.md`, `LICENSE` MIT và `THIRD_PARTY_NOTICES.txt`, kèm `SHA256SUMS.txt`. Binary bổ sung chế độ `--text` cho `search`/`open` và giữ mặc định JSON, exit code và hợp đồng bằng chứng. Các giới hạn máy sạch/SmartScreen/nền tảng khác ở §1/§4 không đổi. §8 dưới đây vẫn là bản ghi lịch sử của `v0.7.0`, không phải asset `v0.8.0`.
+
 ## 1. Quyết định
 
 - Chủ dự án đã duyệt phát hành một asset binary Windows x64 cho `v0.7.0`, trên cơ sở bằng chứng build/đóng gói/diễn tập trên **máy build vật lý** với dữ liệu tổng hợp. Không có người nhận độc lập, không có máy sạch, không có VM snapshot.

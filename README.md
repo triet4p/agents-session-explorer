@@ -15,12 +15,15 @@ reuse the same reopenable evidence. No query path calls a model. `ase judge` and
 
 ## Download (Windows x64)
 
-Latest release: [v0.7.0](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.7.0).
+Latest release: [v0.8.0](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.8.0).
 
 | Asset | Contents |
 |---|---|
-| `ase-0.7.0-windows-x64.zip` | `ase.exe`, `README.md`, `THIRD_PARTY_NOTICES.txt` |
+| `ase-0.8.0-windows-x64.zip` | `ase.exe`, `README.md`, `LICENSE`, `THIRD_PARTY_NOTICES.txt` |
 | `SHA256SUMS.txt` | SHA-256 of the archive and its members |
+
+The `v0.7.0` archive remains available; it predates the project `LICENSE` and the
+`--text` modes.
 
 Requirements:
 
@@ -40,16 +43,16 @@ the bytes equal the published reference, not who produced them.
 ### Verify, extract and run
 
 ```powershell
-$zip = Join-Path $HOME 'Downloads\ase-0.7.0-windows-x64.zip'
+$zip = Join-Path $HOME 'Downloads\ase-0.8.0-windows-x64.zip'
 $sums = Join-Path $HOME 'Downloads\SHA256SUMS.txt'   # download both assets first
 
-$expected = ((Get-Content -LiteralPath $sums | Select-String 'ase-0.7.0-windows-x64.zip').Line -split '\s+')[0]
+$expected = ((Get-Content -LiteralPath $sums | Select-String 'ase-0.8.0-windows-x64.zip').Line -split '\s+')[0]
 $actual   = ((certutil -hashfile $zip SHA256)[1] -replace ' ', '').ToLowerInvariant()
 if ($actual -ne $expected.ToLowerInvariant()) {
     throw "STOP: archive SHA-256 mismatch. Do not extract or run."
 }
 
-$dest = Join-Path $HOME 'ase-0.7.0'
+$dest = Join-Path $HOME 'ase-0.8.0'
 New-Item -ItemType Directory -Path $dest | Out-Null
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zipFile = [System.IO.Compression.ZipFile]::OpenRead($zip)
@@ -117,14 +120,13 @@ profile. A missing root and an empty root both index zero files and still report
 The same flow works with a build from source (`cargo build --release --locked`),
 using `.\target\release\ase.exe` instead of the downloaded `$ase`.
 
-### Daily fixture lookup (source build only)
+### Daily fixture lookup
 
-The `v0.7.0` JSON quick start above is unchanged. The `--text` modes described here
-and in the next two sections exist only in this source-tree build (or a candidate
-carrying the same changes), not in the `v0.7.0` binary; JSON output and the
-`open_args.flags` contract stay the same for automation. Work from a fixture in a
-workspace-local directory whose path contains a space, and always give the CLI an
-explicit index path — never let roots default.
+The JSON quick start above is unchanged and works in `v0.8.0`. The `--text` modes
+described here and in the next two sections are new in `v0.8.0`; JSON output and
+the `open_args.flags` contract stay the same for automation. Work from a fixture
+in a workspace-local directory whose path contains a space, and always give the
+CLI an explicit index path — never let roots default.
 
 ```powershell
 $work    = Join-Path $HOME 'ase daily lookup'   # space on purpose
@@ -194,15 +196,15 @@ same open, then add `--content` explicitly. Default JSON output and the
 `open_args.flags` splat above are unchanged. Transcripts, shell queries, metadata and
 the derived index stay local data — do not copy them into an evidence dossier.
 
-### Readable search hits (source build only)
+### Readable search hits
 
-`ase search <QUERY> --index FILE --text` is available only in this source-tree
-build, not in the `v0.7.0` binary. It prints the returned hit count, the full
-pinned generation, the explicit `--index FILE`, and one metadata line per hit
-with display order, role, span, freshness, event and selector. It never prints
-the query, snippets, prose, journal paths or a ready-to-run shell command. The
-leading number is display order only: reopen with the event and selector from
-that hit, the generation from the header, and the same `--index FILE`.
+`ase search <QUERY> --index FILE --text` is new in `v0.8.0`. It prints the
+returned hit count, the full pinned generation, the explicit `--index FILE`, and
+one metadata line per hit with display order, role, span, freshness, event and
+selector. It never prints the query, snippets, prose, journal paths or a
+ready-to-run shell command. The leading number is display order only: reopen with
+the event and selector from that hit, the generation from the header, and the same
+`--index FILE`.
 
 ```powershell
 & $ase search 'SYNTHETIC USER TOKEN' --index $index --text
@@ -214,13 +216,12 @@ stay unchanged for automation. A successful search with no hits prints a zero
 count with exit `0`; a missing or mismatched postings layer prints
 `layer_unavailable` with exit `4` and is not a zero-hit result.
 
-### Readable reopen status (source build only)
+### Readable reopen status
 
-`ase open --event N --selector S --generation G --index FILE --text` is available
-only in this source-tree build, not in the `v0.7.0` binary. It prints the evidence
-status, the exact block key, the span, the encoding and coordinate system, both
-verification checks and the source freshness hint. It never prints prose, call
-signatures or journal paths.
+`ase open --event N --selector S --generation G --index FILE --text` is new in
+`v0.8.0`. It prints the evidence status, the exact block key, the span, the
+encoding and coordinate system, both verification checks and the source freshness
+hint. It never prints prose, call signatures or journal paths.
 
 ```powershell
 & $ase open --event $hit.event --selector $hit.selector `
@@ -257,7 +258,7 @@ Requirements:
 - Git, to fetch the tagged source.
 
 ```bash
-git clone --branch v0.7.0 https://github.com/triet4p/agents-session-explorer.git
+git clone --branch v0.8.0 https://github.com/triet4p/agents-session-explorer.git
 cd agents-session-explorer
 cargo build --release --locked --target x86_64-pc-windows-msvc
 # Windows output: target\x86_64-pc-windows-msvc\release\ase.exe
@@ -268,7 +269,7 @@ release evidence. `zstd` and SQLite C sources are compiled into the binary, so t
 C toolchain is required at build time but no extra DLLs are needed at runtime
 beyond the Windows system components and `VCRUNTIME140.dll`.
 
-The released binary was built from the `v0.7.0` tag with path remapping
+The released binary was built from the `v0.8.0` tag with path remapping
 (`--remap-path-prefix` for Rust; `/pathmap` for the MSVC C compiler) so the image
 does not embed the build host's source paths. The build is repeatable in procedure
 but not byte-for-byte reproducible: PE timestamps and PDB identity differ between
@@ -328,6 +329,7 @@ Run any subcommand with `--help` for its exact flags, for example
   VC++ runtime, SmartScreen reputation and enterprise policy behavior are untested.
 - Only Windows 11 x64 was exercised. Windows 10, Windows Server, ARM64 and 32-bit
   Windows are untested, as are PowerShell 7-specific behavior and long-running use.
+- The `--text` modes were exercised on synthetic fixtures and the build host only.
 - The build embeds no build-host source paths after remapping, but it is not
   byte-reproducible: PE timestamps and PDB identity change per build.
 - No real-user pilot or real corpus was run for this release. Counts quoted in
@@ -353,8 +355,9 @@ removing `ase`.
 ## License
 
 This project is licensed under the [MIT License](LICENSE), with copyright held by
-Le Minh Triet (2026). The `v0.7.0` tag and its published archive remain as released,
-without a project license file.
+Le Minh Triet (2026). The `v0.8.0` source tree, Windows x64 archive and binary carry
+that `LICENSE`. The earlier `v0.7.0` tag and archive remain as released, without a
+project license file.
 
 Third-party components keep their own licenses. `THIRD_PARTY_NOTICES.txt`, also
 inside the release archive, lists the exact crates and C sources compiled into the

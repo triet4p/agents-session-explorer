@@ -1,12 +1,12 @@
 # Sprint 12 — Từ chỉ mục đến mở lại bằng chứng hằng ngày
 
-**Trạng thái:** hoàn tất trên fixture và máy build; ứng viên Windows chỉ dùng nội bộ, chưa phát hành. **Mục tiêu:** người dùng CLI có thể lập chỉ mục đúng phạm vi đã chọn, đọc nhanh danh sách kết quả và mở lại đúng block từ một hit, phân biệt rõ khi nào bằng chứng đã được xác minh và khi nào cần tìm lại hoặc kiểm nguồn.
+**Trạng thái:** hoàn tất trên fixture và máy build; `v0.8.0` đã phát hành trên bằng chứng fixture/máy build. **Mục tiêu:** người dùng CLI có thể lập chỉ mục đúng phạm vi đã chọn, đọc nhanh danh sách kết quả và mở lại đúng block từ một hit, phân biệt rõ khi nào bằng chứng đã được xác minh và khi nào cần tìm lại hoặc kiểm nguồn.
 
 ## Cơ sở và phạm vi
 
 - [README](../../README.md#quick-start) đã có luồng fixture PowerShell: chỉ định cả hai root, `index --layer all`, `search --open-args --json`, rồi `open` với mảng `flags` của hit. `index` đã có tóm tắt cho người đọc; `search` và `open` in JSON kể cả khi không có `--json`, và help cấp cao bỏ sót `--index FILE` cho cả hai. Nguồn đối chiếu: [help](../../ase-cli/src/main.rs), [index](../../ase-cli/src/index.rs), [search](../../ase-cli/src/search.rs), [open](../../ase-cli/src/open.rs).
 - [Sprint 10](sprint-10.md) chỉ diễn tập bằng fixture; không có phản hồi người dùng hoặc corpus thật để kết luận về ma sát. Cơ sở đề xuất là hành vi CLI đọc từ mã: phải đọc JSON hoặc thao tác PowerShell mới lấy được khóa mở, trong khi kết quả xác minh nằm trong JSON chi tiết. Chế độ văn bản tự chọn là cách giảm bước đọc mà không thay JSON mặc định, không thêm lệnh lưu kết quả hoặc cơ chế chọn hit tự động. Mức hữu ích thực tế vẫn chưa được đo.
-- [`v0.7.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.7.0) vẫn là release mới nhất. `main` có [MIT LICENSE](../../LICENSE) sau tag; archive cũ giữ nguyên, không có `LICENSE` dự án. Dùng [quy trình Windows x64 đã ghi nhận](../WINDOWS_BINARY_ASSESSMENT.md#8-bản-ghi-phát-hành) làm cơ sở cho một ứng viên nội bộ sau khi luồng mới đạt nghiệm thu, không suy ra đã có release mới.
+- Tại thời điểm lập kế hoạch, [`v0.7.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.7.0) là release mới nhất. `main` có [MIT LICENSE](../../LICENSE) sau tag; archive cũ giữ nguyên, không có `LICENSE` dự án. Dùng [quy trình Windows x64 đã ghi nhận](../WINDOWS_BINARY_ASSESSMENT.md#8-bản-ghi-phát-hành) làm cơ sở cho một ứng viên nội bộ sau khi luồng mới đạt nghiệm thu, không suy ra đã có release mới.
 - Phạm vi đã duyệt: fixture và máy build đủ để kiểm sprint này. Không truy cập/dò root, log, index hoặc corpus thật; không cần máy sạch, hồ sơ Windows mới, người tham gia hay nghiên cứu người dùng. Không đổi mặc định root/layer, ingest, xếp hạng, định dạng trên đĩa, locator phiên, automation, telemetry hay model/network. Không đặt gate độ trễ, độ phủ Windows hay tỷ lệ hoàn thành; không đổi [gate lịch sử](../SCOPE.md#gates).
 - Các hành vi và phép kiểm dưới đây là đề xuất nghiệm thu cho lần triển khai sau, không phải kết quả đã chạy. Duyệt lập kế hoạch không cấp quyền triển khai, commit, push, tag, upload hay phát hành.
 
@@ -43,7 +43,12 @@ Chú thích: `[ ]` chưa làm · `[~]` đang làm · `[x]` đạt nghiệm thu. 
 - [x] **ASE-S12-T1 — Hiển thị kết quả tìm cho người đọc.** *Light; Main đối chiếu kiểm mục tiêu A1, không review riêng.* Đã triển khai `search --text` và kiểm hành vi, tương thích JSON và canary trên fixture. [Kết quả kiểm](../../artifacts/sprint-12/ASE-S12-T2/verification-runtime.md).
 - [x] **ASE-S12-T2 — Hiển thị xác minh khi mở lại.** *Light; review độc lập A2.* Đã triển khai `open --text` và kiểm trạng thái bằng chứng, lỗi và tương thích JSON. [Review C1 R1 PASS](../../artifacts/sprint-12/ASE-S12-T2/review-c1-r1.md).
 - [x] **ASE-S12-T3 — Hoàn thiện hướng dẫn tra cứu hằng ngày.** *Light; Main đối chiếu A3.* Đã cập nhật README và kiểm các ví dụ trên fixture bằng PowerShell 5.1 và 7. [Kết quả kiểm](../../artifacts/sprint-12/ASE-S12-T2/verification-runtime.md).
-- [x] **ASE-S12-T4 — Đóng và kiểm ứng viên phân phối có MIT.** *Light; review độc lập A4.* Đã kiểm gói Windows nội bộ cùng LICENSE và notices trên máy build; không phát hành. [Review C1 R1 PASS](../../artifacts/sprint-12/ASE-S12-T4/review-c1-r1.md).
+- [x] **ASE-S12-T4 — Đóng và kiểm ứng viên phân phối có MIT.** *Light; review độc lập A4.* Đã kiểm gói Windows nội bộ cùng LICENSE và notices trên máy build, rồi phát hành `v0.8.0` với asset `ase-0.8.0-windows-x64.zip`. [Review C1 R1 PASS](../../artifacts/sprint-12/ASE-S12-T4/review-c1-r1.md).
+
+## Phát hành
+
+- `v0.8.0` phát hành từ đúng tag cùng tên, asset `ase-0.8.0-windows-x64.zip` (unsigned, kèm `SHA256SUMS.txt`) gồm bốn entry phẳng: `ase.exe`, `README.md`, `LICENSE` MIT và `THIRD_PARTY_NOTICES.txt`; cần Microsoft Visual C++ 2015–2022 Redistributable (x64) cho `VCRUNTIME140.dll`. `v0.7.0` và asset cũ giữ nguyên, không ghi đè.
+- Bản ghi đo đạc của asset phát hành (commit/tag, hash archive/EXE/thành viên, quét đường dẫn máy build, PE/runtime, chữ ký, smoke trên đúng asset giải nén và xác minh tải lại) nằm trong workspace-local [release record](../../artifacts/sprint-12/ASE-S12-T4/release-record.md). Các giới hạn máy sạch/SmartScreen/nền tảng khác vẫn như [đánh giá](../WINDOWS_BINARY_ASSESSMENT.md).
 
 ## Bằng chứng và quyết định
 
