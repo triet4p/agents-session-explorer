@@ -154,19 +154,23 @@ expected because the fixture intentionally contains one invalid JSON line.
 `zstd_files` is the compressed subset of that same count.
 
 **5. Search and open from one hit.** `search` returns coordinates and a
-top-level `generation`. Take `event` and `selector` from the **same hit** and
-that generation from the same response; do not combine fields from different
-hits or open the transcript to assemble them.
+top-level `generation`. Add `--open-args` to get a ready-to-use `open_args`
+object on **each hit**: its `event`, `selector` and `generation` come from that
+same hit and response, its `index` is the index used in this search, and
+`flags` is the same set as a PowerShell argument array. `search` never runs
+`open` and emits no query, prose or source-journal path. On no hit or an
+unavailable layer there is no `open_args` to use.
 
 ```powershell
-$searchJson = & $ase search 'SYNTHETIC USER TOKEN' --index $index --json --explain | Out-String
+$searchJson = & $ase search 'SYNTHETIC USER TOKEN' --index $index --json --explain --open-args | Out-String
 if ($LASTEXITCODE -ne 0) { throw 'search failed' }
 $found = $searchJson | ConvertFrom-Json
 if ($found.status -ne 'ok' -or $found.count -lt 1) { throw 'no hits or layer unavailable' }
 if ($found.generation -ne $indexed.publication.generation) { throw 'generation changed between index and search' }
 $hit = $found.hits[0]
+$openFlags = @($hit.open_args.flags | ForEach-Object { [string]$_ })
 
-& $ase open --event $hit.event --selector $hit.selector --generation $found.generation --index $index --json
+& $ase open @openFlags --json
 if ($LASTEXITCODE -ne 0) { throw 'open failed' }
 ```
 
@@ -245,7 +249,8 @@ replaced by synthetic fixtures); no historic or motif-detection claim is made.
 ase index --layer all --index ase.index --json
 
 # Search metadata only; open the exact block from raw on demand
-ase search "phrase or terms" --index ase.index --json --explain
+ase search "phrase or terms" --index ase.index --json --explain --open-args
+# each hit then carries open_args.flags for the matching `ase open` call
 ase open --event N --selector S --generation G --index ase.index --json
 ase shingle --event N --index ase.index --json
 
@@ -1057,6 +1062,14 @@ re-reads the raw span and re-derives the block from raw JSON. It reports
 `verified_against_index_snapshot` only when both the span checksum and the
 block digest match; edited raw is reported as `unverified` even though the
 search hit is still served.
+
+`search --open-args` adds an `open_args` object per hit with that hit's
+`event` and `selector`, the response `generation`, the exact `--index` used
+for the search and a `flags` array ready to pass to `ase open` as arguments.
+It is opt-in: default search output, FTS ranking and `open`'s raw recheck are
+unchanged. No command is executed, and no query, prose or source-journal path
+is embedded. As before, an appended source is not searched until reindexed;
+`open` only verifies the pinned span, and reports `unverified` after an edit.
 
 OMP call blocks use the same argument extraction when indexed and reopened: a
 tool call's legacy `args` field wins over `arguments`, and the selected field's

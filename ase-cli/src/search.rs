@@ -6,7 +6,7 @@
 
 use crate::cli_option::{has, opt, positional};
 use crate::cli_output::emit;
-use crate::index::load_with_publication;
+use crate::index::{index_path, load_with_publication};
 use crate::show::{freshness_json, span_label};
 use ase_core::{err, Result};
 use ase_index::sha256_hex;
@@ -29,6 +29,23 @@ fn unavailable_value(command: &str, reason: &str) -> Value {
     })
 }
 
+/// Ready-to-use `open` arguments for one hit. Only the four pinned coordinates
+/// and the exact index path are emitted: no query, prose, or source path.
+fn open_args(event: u32, selector: &str, generation: &str, index: &str) -> Value {
+    json!({
+        "event": event,
+        "selector": selector,
+        "generation": generation,
+        "index": index,
+        "flags": [
+            "--event", event.to_string(),
+            "--selector", selector,
+            "--generation", generation,
+            "--index", index
+        ]
+    })
+}
+
 pub fn run(args: &[String]) -> Result<()> {
     let query = positional(args).ok_or_else(|| err("search needs a query"))?;
     let (idx, _, published, reason) = load_with_publication(args)?;
@@ -42,13 +59,15 @@ pub fn run(args: &[String]) -> Result<()> {
         .unwrap_or(10)
         .clamp(1, 1000);
     let phrase = has(args, "--phrase");
+    let with_open_args = has(args, "--open-args");
+    let index = index_path(args).to_string_lossy().into_owned();
     let hits = search(&published, &idx, &query, phrase, top_k)?;
     let query_hash = sha256_hex(query.as_bytes());
     let rendered: Vec<Value> = hits
         .iter()
         .map(|h| {
             let fresh = freshness_json(&idx, h.span.file);
-            json!({
+            let mut hit_value = json!({
                 "event": h.event,
                 "span": span_label(h.span),
                 "selector": h.selector,
@@ -60,7 +79,12 @@ pub fn run(args: &[String]) -> Result<()> {
                 "encoding": h.encoding.label(),
                 "coordinate": h.encoding.coordinate(),
                 "freshness": fresh["status"]
-            })
+            });
+            if with_open_args {
+                hit_value["open_args"] =
+                    open_args(h.event, &h.selector, &published.generation, &index);
+            }
+            hit_value
         })
         .collect();
     let mut explain = vec![
@@ -86,4 +110,32 @@ pub fn run(args: &[String]) -> Result<()> {
     });
     emit(&v, args);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::open_args;
+    use serde_json::json;
+
+    #[test]
+    fn test_open_args_pin_one_hit_without_query_or_source_text() {
+        let v = open_args(7, "block-v1|test", "gen-1", "work/ase.index");
+        assert_eq!(v["event"], json!(7));
+        assert_eq!(v["selector"], json!("block-v1|test"));
+        assert_eq!(v["generation"], json!("gen-1"));
+        assert_eq!(v["index"], json!("work/ase.index"));
+        assert_eq!(
+            v["flags"],
+            json!([
+                "--event", "7",
+                "--selector", "block-v1|test",
+                "--generation", "gen-1",
+                "--index", "work/ase.index"
+            ])
+        );
+        let encoded = v.to_string();
+        assert!(!encoded.contains("QUERY_CANARY"));
+        assert!(!encoded.contains("PROSE_CANARY"));
+        assert!(!encoded.contains("synthetic.jsonl"));
+    }
 }

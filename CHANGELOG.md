@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `ase search --open-args`, an opt-in `open_args` field on every hit with the exact `--event`, `--selector`, `--generation` and `--index` values from that hit, plus a `flags` array ready to pass to `ase open`. Nothing is executed, no query, prose or source-journal path is emitted, and default search output, ranking and `open` verification are unchanged.
+
 ## [0.5.1] - 2026-11-27
 
 ### Fixed
