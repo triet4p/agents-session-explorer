@@ -108,10 +108,10 @@ Bản ghi đo đạc của đúng asset phát hành, thực hiện ngày 2026-11
 | Release | `https://github.com/triet4p/agents-session-explorer/releases/tag/v0.7.0` |
 | Nguồn build | Export sạch từ đúng tag (196 tệp, không `.git`), `Cargo.lock` SHA-256 `90d44663fee3b9a67e6ce1182cd6578e2bc750d909638c05f1dc40d283729a24` |
 | Toolchain | Rust/Cargo `1.91.1`; MSVC `14.43.34808`; Windows SDK `10.0.20348.0`; target `x86_64-pc-windows-msvc`; `--release --locked` |
-| Remap | Rust `--remap-path-prefix` (`C:\Users\admin`→`/build-home`, `.cargo`→`/cargo`, `.rustup`→`/rustup`, rust-src→`/rust-src`, cây nguồn→`/ase-src`); MSVC `/pathmap` cho nguồn và thư mục người dùng |
+| Remap | Rust `--remap-path-prefix` (profile người dùng build→`/build-home`, `.cargo`→`/cargo`, `.rustup`→`/rustup`, rust-src→`/rust-src`, cây nguồn→`/ase-src`); MSVC `/pathmap` cho cây nguồn và thư mục người dùng |
 | EXE | `ase.exe`, 10.681.344 byte, PE32+ x86-64 (`0x8664`, subsystem console), SHA-256 `692087bc41d506041d443ed0606eab4ddeee79d0f355bbceff48b0997b5073ab` |
 | Runtime tĩnh | 15 DLL import trực tiếp, không delay-load/bound import; 14 DLL hệ thống/API-set + `VCRUNTIME140.dll` (12 hàm); không DLL bên thứ ba |
-| Quét đường dẫn | 0 lần xuất hiện `C:\Users`, `F:\ai-ml`, `.rustup`, `.cargo`, `admin`, `s11rel`; 12 chuỗi ổ-đĩa còn lại đều là literal fixture tổng hợp `C:\SYNTHETIC\…`; các tiền tố trung tính `/ase-src`, `/rust-src`, `/cargo` còn trong panic location |
+| Quét đường dẫn | 0 lần xuất hiện thư mục người dùng của máy build, đường dẫn ổ-đĩa của cây nguồn, `.rustup`, `.cargo`, tên tài khoản build hay thư mục scratch; 12 chuỗi ổ-đĩa còn lại đều là literal fixture tổng hợp `C:\SYNTHETIC\…`; các tiền tố trung tính `/ase-src`, `/rust-src`, `/cargo` còn trong panic location |
 | Tái tạo byte | Hai build remap cùng nguồn/cờ: cùng kích thước 10.681.344 byte, digest khác nhau (`32e00b5f…bc557` và `692087bc…b5073ab`); xác nhận không tái tạo byte |
 | Archive | `ase-0.7.0-windows-x64.zip`, 4.118.116 byte, SHA-256 `b90134ff2a5508ead37f0c2ca3e783d9fa8ae94cfebb58c8dda0cf504d907dcf` |
 | Thành viên archive | 3 entry phẳng: `ase.exe` (10.681.344, `692087bc…b5073ab`), `README.md` (12.103, `b4ea3e94…53ae1`), `THIRD_PARTY_NOTICES.txt` (26.812, `06994495…74c65`); không entry thư mục, không bit reparse/symlink |
