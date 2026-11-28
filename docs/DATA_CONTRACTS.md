@@ -12,6 +12,8 @@ Trang này định nghĩa **đơn vị tham chiếu và điều kiện để tin
 | `raw_file_bytes` | Byte trong JSONL gốc | Seek tới `off`, đọc đúng `len`. |
 | `decompressed_stream_bytes` | Byte trong **luồng đã giải nén** từ `.jsonl.zst` | Giải nén rồi cắt khoảng; không seek `off` trong tệp nén. Nén lại có thể đổi vỏ nhưng giữ nguyên dòng. |
 
+**Đã có (CLI).** Mọi lệnh đọc index chọn nguồn qua cùng một đường dẫn logic `--index FILE` (mặc định `ase.index`). Sidecar hợp lệ ghim address của đúng generation đã kiểm; `audit`, `work`/`analytics`, `verify`, `bench-*` và các lệnh dẫn xuất cùng mở address đó. Khi sidecar thiếu/hỏng, lệnh chỉ đọc address tiếp tục nếu chính `FILE` là address mở được; lệnh cần tầng dẫn xuất từ chối thay vì trả tập rỗng. Truyền trực tiếp `generations/<G>/address.bin` vẫn là address-only; CLI không dò publication theo thư mục hay tự chọn generation mới.
+
 **Đề xuất.** Con trỏ xuyên build cần `build_id`, tham chiếu nguồn trong manifest riêng tư, provider, encoding, coordinate, ordinal, off, len và digest mạnh của **đúng byte dòng**. Đổi đường dẫn không tự chứng minh cùng nguồn; ordinal chỉ giúp tìm lại ứng viên rồi phải kiểm byte. Kiểm tràn, giới hạn và khớp địa chỉ chính xác trước khi giải mã. Digest dòng không thay thế khóa occurrence: hai dòng bằng nhau ở hai nơi vẫn là hai lần xảy ra. Không lấy offset trong chuỗi JSON đã unescape làm offset nguồn.
 
 <a id="projection"></a>

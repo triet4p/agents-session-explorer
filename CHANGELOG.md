@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `audit naming`, `audit delegation` and work/analytics readers to resolve the logical `--index FILE` through the same publication seam as the other index readers. They now read the pinned generation address when the publication is usable; with an unusable sidecar they use the named path only if it is itself a usable address, while derived-layer commands still refuse instead of reporting an empty result.
+
 ## [0.8.0] - 2026-11-28
 
 ### Added

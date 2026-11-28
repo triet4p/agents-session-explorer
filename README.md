@@ -304,6 +304,13 @@ Run any subcommand with `--help` for its exact flags, for example
 - Each successful publication writes an immutable generation directory and replaces
   one sidecar pointer atomically. A mismatched or missing sidecar returns
   `layer_unavailable` for search while address-based commands keep working.
+- `--index FILE` is one logical path for every command that reads the index,
+  including `audit`, `work`, `analytics`, `verify` and `bench-*`. When a usable
+  publication exists, readers open its pinned generation address even if `FILE`
+  itself has no address bytes; without one, address-based commands use `FILE`
+  only when it is itself a usable address, and derived-layer commands refuse
+  rather than report an empty result. Pass a direct `generations/<G>/address.bin`
+  path for an address-only read.
 - `search` returns coordinates, ranking metadata and generation — no stored prose or
   snippet. `open` re-reads the raw span, re-derives the block and reports
   `verified_against_index_snapshot` only when the span checksum and block digest

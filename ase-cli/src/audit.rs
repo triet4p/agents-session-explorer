@@ -1,11 +1,12 @@
 //! Metadata-only naming grammar and parentSession delegation audits.
 //!
-//! Both subjects open the address index directly: no raw span, prose, postings
-//! or model is consulted. Marker auditing lives with the verified prose seam.
+//! Both subjects resolve the logical `--index` path through the shared reader
+//! seam and read indexed metadata only: no raw span, prose, postings or model.
+//! Marker auditing lives with the verified prose seam.
 
 use crate::cli_option::{has, opt};
 use crate::cli_output::emit;
-use crate::index::index_path;
+use crate::index::{index_path, load_address};
 use crate::show::span_label;
 use ase_core::{err, Result};
 use ase_index::Index;
@@ -81,9 +82,9 @@ pub fn run(args: &[String]) -> Result<()> {
 }
 
 fn cmd_audit_naming(args: &[String]) -> Result<()> {
-    // Deliberately open the address directly: this command never constructs a
+    // Use the shared logical-path selection; this command never constructs a
     // RawStore, opens a span, reads prose, or consults postings.
-    let idx = Index::open(&index_path(args))?;
+    let idx = load_address(args)?;
     let mut result = ase_naming::audit(&naming_sources(&idx)?);
     if let Some(project) = opt(args, "--project") {
         result.signals.retain(|s| match s.status {
@@ -279,9 +280,9 @@ fn delegation_session_value(s: &ase_delegation::SessionRef) -> Value {
 }
 
 fn cmd_audit_delegation(args: &[String]) -> Result<()> {
-    // Same metadata-only seam as `audit naming`: no RawStore, no span read,
-    // no postings and no model.
-    let idx = Index::open(&index_path(args))?;
+    // Same shared source selection as `audit naming`: no RawStore, no span
+    // read, no postings and no model.
+    let idx = load_address(args)?;
     let result = ase_delegation::audit(&delegation_inputs(&idx)?);
     let rule = &result.rule;
     let rule_value = json!({ "name": &rule.name, "version": &rule.version });

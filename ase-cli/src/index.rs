@@ -22,20 +22,45 @@ pub(crate) fn index_path(args: &[String]) -> PathBuf {
     PathBuf::from(opt(args, "--index").unwrap_or_else(|| DEFAULT_INDEX.to_string()))
 }
 
+/// Resolve the logical `--index` path to the address a reader must open.
+///
+/// A usable publication always wins and pins its own immutable address. When
+/// the sidecar is missing or unusable, the path the caller named is returned
+/// unchanged together with the reason; this never scans a directory, picks a
+/// newer generation or substitutes the default index name.
+pub(crate) fn resolve_source(args: &[String]) -> (PathBuf, Option<Publication>, Option<String>) {
+    let logical = index_path(args);
+    match publication::open(&logical) {
+        Ok(Some(published)) => (published.address_path.clone(), Some(published), None),
+        Ok(None) => (logical, None, Some("sidecar_missing".to_string())),
+        Err(e) => (logical, None, Some(e.to_string())),
+    }
+}
+
+/// Open one resolved address. A failed address read also names why the
+/// publication could not be used, so a missing or mismatched layer is never
+/// mistaken for an empty result.
+pub(crate) fn open_address(address: &Path, reason: Option<&str>) -> Result<Index> {
+    match Index::open(address) {
+        Ok(idx) => Ok(idx),
+        Err(e) => match reason {
+            Some(reason) => Err(err(format!("{e}; publication unavailable ({reason})"))),
+            None => Err(e),
+        },
+    }
+}
+
+/// Address-only load for readers that never touch raw spans, postings or prose.
+pub(crate) fn load_address(args: &[String]) -> Result<Arc<Index>> {
+    let (address, _, reason) = resolve_source(args);
+    Ok(Arc::new(open_address(&address, reason.as_deref())?))
+}
+
 pub(crate) fn load_with_publication(
     args: &[String],
 ) -> Result<(Arc<Index>, FsRawStore, Option<Publication>, Option<String>)> {
-    let p = index_path(args);
-    let (published, reason) = match publication::open(&p) {
-        Ok(Some(published)) => (Some(published), None),
-        Ok(None) => (None, Some("sidecar_missing".to_string())),
-        Err(e) => (None, Some(e.to_string())),
-    };
-    let address = published
-        .as_ref()
-        .map(|v| v.address_path.clone())
-        .unwrap_or(p);
-    let idx = Arc::new(Index::open(&address)?);
+    let (address, published, reason) = resolve_source(args);
+    let idx = Arc::new(open_address(&address, reason.as_deref())?);
     let store = FsRawStore::new(idx.clone());
     Ok((idx, store, published, reason))
 }
@@ -376,4 +401,30 @@ fn index_usage() {
         "ase index [--layer address|postings|all] [--omp-root DIR] [--codex-root DIR]\n\
          [--index FILE] [--fail-before-publish] [--json]"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{index_path, open_address, resolve_source};
+
+    #[test]
+    fn source_selection_keeps_the_named_path_without_a_publication() {
+        let args = vec![
+            "source-selection-canary".to_string(),
+            "--index".to_string(),
+            "missing logical path/ase.index".to_string(),
+        ];
+        let (address, published, reason) = resolve_source(&args);
+        assert_eq!(address, index_path(&args));
+        assert!(published.is_none());
+        assert_eq!(reason.as_deref(), Some("sidecar_missing"));
+        let error = match open_address(&address, reason.as_deref()) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("a missing address cannot open"),
+        };
+        assert!(
+            error.contains("publication unavailable (sidecar_missing)"),
+            "{error}"
+        );
+    }
 }

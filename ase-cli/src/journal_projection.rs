@@ -11,7 +11,7 @@ use ase_work::{JournalProjection, ManifestEntry, Window};
 use std::fs;
 use std::sync::Arc;
 use crate::cli_option::opt;
-use crate::index::index_path;
+use crate::index::{open_address, resolve_source};
 
 // ---------------------------------------------------------- work projection
 
@@ -35,15 +35,11 @@ pub(crate) struct ProjectedWork {
 }
 
 
+/// Address-only projection: the named path is used when no publication pins
+/// an address, but only when that path itself opens as an address index.
 pub(crate) fn load_work(args: &[String]) -> Result<(Arc<Index>, FsRawStore, String)> {
-    let pointer = index_path(args);
-    let address = match publication::open(&pointer) {
-        Ok(Some(published)) => published.address_path,
-        // A missing, tombstoned or mismatched derived layer never disables the
-        // address-only turn projection.
-        _ => pointer,
-    };
-    let idx = Arc::new(Index::open(&address)?);
+    let (address, _, reason) = resolve_source(args);
+    let idx = Arc::new(open_address(&address, reason.as_deref())?);
     let (_, digest) = publication::sha256_file(&address)?;
     let generation = format!("index-sha256:{digest}");
     let store = FsRawStore::new(idx.clone());
