@@ -1,6 +1,6 @@
 # Sprint 13 — CLI nhất quán sau phản hồi v0.8.0
 
-**Trạng thái:** đã lập kế hoạch, chưa triển khai. **Mục tiêu:** dùng cùng một đường dẫn chỉ mục qua các lệnh liên quan, mở lại đúng snapshot, tra help và nối pipe an toàn, hiểu đúng phạm vi định danh, claim và export mà không thay hợp đồng bằng chứng.
+**Trạng thái:** hoàn tất; đã phát hành [`v0.9.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.9.0). **Mục tiêu:** dùng cùng một đường dẫn chỉ mục qua các lệnh liên quan, mở lại đúng snapshot, tra help và nối pipe an toàn, hiểu đúng phạm vi định danh, claim và export mà không thay hợp đồng bằng chứng.
 
 ## Cơ sở và phạm vi
 
@@ -64,7 +64,7 @@ Chú thích: `[ ]` chưa làm · `[~]` đang làm · `[x]` đạt nghiệm thu. 
 - [x] **ASE-S13-T5 — Làm rõ định danh resolver so với membership motif (A5).** *Light; review độc lập ma trận định danh.* Sau T1, T3. Review PASS; commit `8a00915`.
 - [x] **ASE-S13-T6 — Làm rõ đơn vị giới hạn của adapter (A6).** *Light; Main đối chiếu fixture limit và tương thích, không review riêng.* Sau T1, T3. Fixture 21/21 PASS; commit `f822fb5`.
 - [x] **ASE-S13-T7 — Làm rõ cách nhập cohort cho export (A7).** *Light; review độc lập ví dụ, lỗi, reopen và ranh giới map/bundle.* Sau T1, T3, T5. Review PASS; commit `52fbf6d`.
-- [~] **ASE-S13-T8 — Chuẩn bị và kiểm ứng viên phát hành từ nguồn sạch (A8).** *Light; review độc lập nguồn/gói/smoke; phát hành cần quyền riêng.* Sau T1–T7 và khi version đã chốt.
+- [x] **ASE-S13-T8 — Chuẩn bị và kiểm ứng viên phát hành từ nguồn sạch (A8).** *Light; review độc lập nguồn/gói/smoke; phát hành cần quyền riêng.* Sau T1–T7 và khi version đã chốt. Review PASS round 2 (`artifacts/sprint-13/ASE-S13-T8/review-c1-r2.md`); phát hành `v0.9.0` từ snapshot `884a038e`, asset `ase-0.9.0-windows-x64.zip` SHA-256 `58a0271ba48aac32251b99a50b3995022c4b1d2c7f75b0ab0abd4536ff63cdd0`.
 
 Review mặc định hai vòng. Main chỉ cấp vòng ba nếu có tiến triển chứng minh được và còn sửa/kiểm hẹp; nếu không, hoặc vẫn chưa PASS sau vòng ba, để `[~]`, `blocked: owner_decision_required` và xin quyết định chủ dự án.
 

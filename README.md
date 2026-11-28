@@ -15,7 +15,7 @@ reuse the same reopenable evidence. No query path calls a model. `ase judge` and
 
 ## Download (Windows x64)
 
-Latest release: [v0.8.0](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.8.0).
+* Latest release: [v0.9.0](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.9.0).
 
 | Asset | Contents |
 |---|---|

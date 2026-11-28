@@ -4,7 +4,7 @@
 
 ## Sprint hiện tại
 
-**[Sprint 13 — CLI nhất quán sau phản hồi v0.8.0](sprint-plans/sprint-13.md) — đã lập kế hoạch, chưa triển khai.** Thống nhất đường dẫn chỉ mục và cách ghim generation; làm cho help và stdout pipe hoạt động nhất quán; làm rõ định danh resolver/motif, đơn vị giới hạn adapter và đầu vào export. Mốc đầu là tương thích chỉ mục/locator; tiếp theo là nghiệm thu CLI và tài liệu sản phẩm; cuối cùng là kiểm ứng viên Windows x64 từ snapshot sạch. Chỉ dùng fixture và máy build, không thử lại với người dùng hay truy cập dữ liệu phiên thật, không thêm gate hiệu năng. Version và quyền phát hành chưa chốt.
+**[Sprint 13 — CLI nhất quán sau phản hồi v0.8.0](sprint-plans/sprint-13.md) — hoàn tất và đã phát hành `v0.9.0`.** Thống nhất đường dẫn chỉ mục và cách ghim generation; help và stdout pipe nhất quán; làm rõ định danh resolver/motif, đơn vị giới hạn adapter và đầu vào export. Asset Windows x64 `ase-0.9.0-windows-x64.zip` (unsigned, kèm `LICENSE` MIT, `SHA256SUMS.txt`) đã phát hành từ snapshot sạch `884a038e` trên bằng chứng fixture/máy build; không dùng dữ liệu phiên thật.
 
 ## Sprint 12 đã phát hành
 
@@ -40,7 +40,7 @@
 
 **[Sprint 7 — P4 trao đổi bằng chứng](sprint-plans/sprint-7.md) hoàn tất:** export, verify, import verdict và đối chiếu skill/template chạy cục bộ trên pilot OMP đã ghim. Trích được bằng chứng cho 4/4 ứng viên; mở lại 19/19 bản ghi bằng chứng và xác minh 4/4 assertion đã nhận. [Deep review R2 PASS](../artifacts/sprint-7/ASE-S7-T6/reviews/ASE-S7-DEEP-R2.md). Phát hành trong [`v0.5.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.5.0).
 
-**Trạng thái phát hành:** [`v0.8.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.8.0) là bản có tag mới nhất. Asset `ase-0.8.0-windows-x64.zip` (unsigned, kèm `SHA256SUMS.txt`) gồm `ase.exe`, `README.md`, `LICENSE` MIT và `THIRD_PARTY_NOTICES.txt`; build từ đúng tag với `--locked` và đường dẫn build đã khử. So với `v0.7.0`, bản này thêm `--text` cho `search`/`open` và giữ nguyên JSON mặc định, exit code và hợp đồng bằng chứng. Phát hành dựa trên chấp nhận của chủ dự án đối với bằng chứng fixture/máy build; chưa kiểm máy Windows sạch, chưa ký. `v0.7.0` và archive của nó giữ nguyên như đã phát hành, không có `LICENSE` dự án.
+**Trạng thái phát hành:** [`v0.9.0`](https://github.com/triet4p/agents-session-explorer/releases/tag/v0.9.0) là bản có tag mới nhất. Asset `ase-0.9.0-windows-x64.zip` (unsigned, kèm `SHA256SUMS.txt`) gồm `ase.exe`, `README.md`, `LICENSE` MIT và `THIRD_PARTY_NOTICES.txt`; build từ đúng tag `884a038e` với `--locked` và đường dẫn build đã khử. So với `v0.8.0`, bản này hoàn thiện Sprint 13 (A1–A7) về nhất quán CLI và giữ nguyên JSON mặc định, exit code và hợp đồng bằng chứng. Phát hành dựa trên chấp nhận của chủ dự án đối với bằng chứng fixture/máy build; chưa kiểm máy Windows sạch, chưa ký. `v0.8.0` và archive của nó giữ nguyên như đã phát hành.
 
 **Đồng bộ toàn diện (chủ dự án duyệt):** viết lại vị trí `main` local để loại `artifacts/` nội bộ khỏi dòng public, giữ nguyên code, commit toàn bộ `docs/` hiện có, ignore scratch/build/evidence nội bộ; `git status` cuối phải sạch và đồng bộ với `origin/main`.
 
