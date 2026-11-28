@@ -16,6 +16,7 @@
 
 - Clarified in `ase adapter omp-stock --help`, the root help and the README that `--limit N` bounds the parent journals selected after path sorting, not files read, children or claims. `scan.parent_files` is the parent count; one parent can emit several advisory claims and `--out` is not truncated. Added `ase fixture-adapter --parents N` for a multi-parent synthetic fixture. No scan behavior, schema, claim policy or exit code changed.
 - Clarified in `ase resolve --help`, `ase motif --help`, the README and the identity contract that `resolve task:TOKEN` reconciles a bare token across naming, marker, delegation, path and dispatch signals, while `motif` admits only dispatch-confirmed attempts of the addressed task key. `PROJECT|TOKEN` filters the project before dispatch so two projects sharing a token stay separate keys; a resolver `assigned` result is not a motif sample. No grammar, evidence rule, output schema or exit code changed.
+- Clarified in `ase export --help`, the root help, the README and export input errors that `--address 'PROJECT|TASK'` repeats, `--addresses FILE` reads a JSON array of strings or an object with an `addresses` array (not inline/CSV), and both forms combine with duplicates removed before membership resolution. File-shape, empty-list, missing-key and misplaced-value errors now name the problem, and a motif id must appear in the pinned query rerun for the selected cohort on the current publication. No query, redaction, reopen or output schema changed.
 
 ## [0.8.0] - 2026-11-28
 

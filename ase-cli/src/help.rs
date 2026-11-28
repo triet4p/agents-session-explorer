@@ -166,9 +166,13 @@ const MOTIF_USAGE: &str = "ase motif [PROJECT|TASK|TOKEN]... [--tau F] [--k-min 
      a bare TOKEN stays ambiguous when two projects share it; naming, markers, paths and claims\n\
      never create membership; quote 'PROJECT|4' in PowerShell)";
 const EXPORT_USAGE: &str = "ase export motif:<id> --out DIR --local-map FILE\n\
-     (--address PROJECT|TASK ... | --addresses FILE)\n\
+     --address 'PROJECT|TASK' [--address 'PROJECT|TASK' ...] [--addresses FILE]\n\
      [--index FILE] [--omp-root DIR] [--codex-root DIR] [--json]\n\
-     (writes only path-free bundle files; the private alias map stays outside)";
+     (--address repeats; --addresses FILE is a JSON array of strings or an object with an\n\
+     `addresses` array of strings, not inline/CSV; both forms combine and dedupe before resolve;\n\
+     every address needs a full project/task key; quote '|' in PowerShell; the private map stays\n\
+     outside the bundle; motif:<id> must come from the pinned query rerun for this cohort\n\
+     on the current publication, not an arbitrary occurrence id)";
 const IMPORT_USAGE: &str = "ase import verdicts FILE --bundle DIR --local-map FILE --store FILE [--json]\n\
      (reopens the bundle first; accepted assertions stay in the local store)";
 const JOIN_USAGE: &str = "ase join skill-gap --store FILE --catalog FILE --bundle DIR --local-map FILE\n\

@@ -146,9 +146,12 @@ fn usage() {
                      (PROJECT|TASK filters the project before dispatch and admits only confirmed joins;\n\
                      a bare TOKEN stays ambiguous across projects; quote 'PROJECT|4' in PowerShell)\n\
          ase export motif:<id> --out DIR --local-map FILE\n\
-                     (--address PROJECT|TASK ... | --addresses FILE)\n\
+                     --address 'PROJECT|TASK' [--address 'PROJECT|TASK' ...] [--addresses FILE]\n\
                      [--index FILE] [--omp-root DIR] [--codex-root DIR] [--json]\n\
-                     (writes only path-free bundle files; the private alias map stays outside)\n\
+                     (--address repeats; --addresses FILE takes JSON strings, not inline/CSV;\n\
+                     both forms combine and dedupe; 'PROJECT|TASK' needs quoting in PowerShell;\n\
+                     motif:<id> must be in the pinned cohort rerun on the current publication;\n\
+                     the private map stays outside the bundle)\n\
          ase import verdicts FILE --bundle DIR --local-map FILE --store FILE [--json]\
                      (reopens the bundle first; accepted assertions stay in the local store)\
          ase join skill-gap --store FILE --catalog FILE --bundle DIR --local-map FILE [--verdicts FILE] [--json]\

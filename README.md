@@ -298,7 +298,7 @@ runs, so rebuilding will not reproduce the published digest.
 | Identity | `ase resolve`, `ase audit naming`, `ase audit delegation`, `ase audit markers` reconcile naming grammar, delegation and `task_id=` markers with inspectable evidence. |
 | Work and analytics | `ase work project\|session\|reopen\|compare\|delta` projects turns/episodes; `ase analytics` reports stored cost, duration and clock unions. |
 | Patterns | `ase motif`, `ase shingle`, and `ase adapter omp-stock` produce advisory, evidence-pinned claims; adapter `--limit` bounds parent journals, not claims, and adapter claims never write membership. |
-| Evidence exchange | `ase export motif:<id>`, `ase verify <bundle>`, `ase import verdicts`, `ase join skill-gap` move path-free evidence bundles without shipping source paths. |
+| Evidence exchange | `ase export motif:<id>` (repeatable `--address 'PROJECT\|TASK'`, JSON `--addresses FILE`), `ase verify <bundle>`, `ase import verdicts`, `ase join skill-gap` move path-free evidence bundles without shipping source paths. |
 | Optional model layer | `ase judge`, `ase llm` run offline evaluation against a local runner or an explicitly configured API profile. |
 | Fixtures | `ase fixture`, `ase fixture-*` write synthetic journals for every layer; they contain no real transcript text. |
 
@@ -367,6 +367,36 @@ ase adapter omp-stock --reopen .\limit-fixture\limited.json --index .\limit-fixt
 This example is synthetic (`fixture-adapter`), not a user's corpus. Compare with
 an unlimited `--all` run: `scan.parent_files` changes while the claims stay
 advisory.
+
+
+## Exporting a cohort as a path-free bundle
+
+`ase export motif:<id>` re-runs one pinned motif query over the selected cohort
+on the current publication. The `motif:<id>` value must appear in that re-run:
+it is not a general occurrence id that can be used to fetch arbitrary evidence.
+No verdict, model, network or gate measurement is involved.
+
+`--address 'PROJECT|TASK'` is repeatable for inline keys. `--addresses FILE`
+reads a JSON array of strings, or an object whose `addresses` field is an array
+of strings; it does not accept an inline or comma-separated list. Both forms
+can be combined: addresses are merged and duplicates removed before membership
+is resolved, and every entry still needs a non-empty project and task key.
+
+Quote the pipe in PowerShell, use quoted paths when a directory or file name
+contains a space, and keep the private alias map outside the bundle directory:
+
+```powershell
+ase fixture-motif --out .\export-fixture
+ase index --layer all --omp-root .\export-fixture\omp --codex-root .\export-fixture\codex --index .\export-fixture\ase.index
+@('MotifAlpha|1', 'MotifAlpha|2') | ConvertTo-Json | Set-Content -LiteralPath '.\export-fixture\address file.json'
+ase export motif:<id> --out '.\export-fixture\bundle' --local-map '.\export-fixture\private map.json' --address 'MotifAlpha|1' --addresses '.\export-fixture\address file.json' --index .\export-fixture\ase.index --json
+ase verify '.\export-fixture\bundle' --local-map '.\export-fixture\private map.json' --json
+```
+
+The example uses synthetic fixture data, not a user's corpus. Obtain `<id>`
+from the same cohort on the same publication; an id from another snapshot or
+address set is refused. The bundle contains no source paths and the local map
+is required to reopen its evidence.
 
 ## How data is stored
 

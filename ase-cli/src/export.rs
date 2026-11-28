@@ -62,20 +62,26 @@ fn has(args: &[String], name: &str) -> bool {
     args.iter().any(|a| a == name)
 }
 
-fn opts(args: &[String], name: &str) -> Vec<String> {
+fn flag_values(args: &[String], name: &str) -> Result<Vec<String>> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < args.len() {
         if args[i] == name {
-            if let Some(value) = args.get(i + 1) {
-                out.push(value.clone());
-                i += 2;
-                continue;
+            let value = args
+                .get(i + 1)
+                .ok_or_else(|| err(format!("{name} needs a value")))?;
+            if value.starts_with("--") {
+                return Err(err(format!(
+                    "{name} needs a value, not the flag {value}; check the flag/value order"
+                )));
             }
+            out.push(value.clone());
+            i += 2;
+            continue;
         }
         i += 1;
     }
-    out
+    Ok(out)
 }
 
 fn positional_target(args: &[String]) -> Result<String> {
@@ -122,43 +128,68 @@ fn write_json(path: &Path, value: &Value) -> Result<()> {
     fs::write(path, body).map_err(|e| err(format!("write failed: {e}")))
 }
 
-fn read_json(path: &Path) -> Result<Value> {
-    let bytes = fs::read(path).map_err(|e| err(format!("read failed: {e}")))?;
-    serde_json::from_slice(&bytes).map_err(|e| err(format!("JSON parse: {e}")))
-}
-
 fn digest_file(path: &Path) -> Result<String> {
     let bytes = fs::read(path).map_err(|e| err(format!("read failed: {e}")))?;
     Ok(sha256_hex(&bytes))
 }
 
-fn collect_addresses(args: &[String]) -> Result<Vec<MotifTarget>> {
-    let mut raw = opts(args, "--address");
-    for path in opts(args, "--addresses") {
-        let value = read_json(Path::new(&path))?;
-        let list = value
-            .get("addresses")
-            .and_then(Value::as_array)
-            .or_else(|| value.as_array())
-            .ok_or_else(|| err("--addresses file needs an addresses array"))?;
-        for row in list {
-            let address = row
-                .as_str()
-                .ok_or_else(|| err("--addresses entries must be strings"))?;
-            raw.push(address.to_string());
+fn address_file_entries(path: &str) -> Result<Vec<String>> {
+    let bytes = fs::read(Path::new(path)).map_err(|e| {
+        let trimmed = path.trim_start();
+        if trimmed.starts_with('[') || trimmed.starts_with('{') || path.contains('|') {
+            err(format!(
+                "--addresses expects FILE, not an inline address list; pass a file path or repeat --address 'PROJECT|TASK' for inline keys"
+            ))
+        } else {
+            err(format!("--addresses could not read FILE {path:?}: {e}"))
         }
+    })?;
+    let value: Value = serde_json::from_slice(&bytes)
+        .map_err(|e| err(format!("--addresses FILE {path:?} is not JSON: {e}")))?;
+    let list = match &value {
+        Value::Array(rows) => Some(rows.as_slice()),
+        Value::Object(_) => value.get("addresses").and_then(Value::as_array).map(Vec::as_slice),
+        _ => None,
+    };
+    let Some(list) = list else {
+        return Err(err(format!(
+            "--addresses FILE {path:?} must be a JSON array of strings or an object with an `addresses` array of strings, not inline/CSV text"
+        )));
+    };
+    let mut entries = Vec::with_capacity(list.len());
+    for (index, row) in list.iter().enumerate() {
+        let address = row.as_str().ok_or_else(|| {
+            err(format!(
+                "--addresses FILE {path:?} entry {index} must be a string PROJECT|TASK; inline/CSV text is not accepted"
+            ))
+        })?;
+        entries.push(address.to_string());
+    }
+    Ok(entries)
+}
+
+fn collect_addresses(args: &[String]) -> Result<Vec<MotifTarget>> {
+    let mut raw = flag_values(args, "--address")?;
+    let mut from_file = false;
+    for path in flag_values(args, "--addresses")? {
+        from_file = true;
+        raw.extend(address_file_entries(&path)?);
     }
     raw.sort();
     raw.dedup();
     if raw.is_empty() {
-        return Err(err("export needs --address PROJECT|TASK or --addresses FILE"));
+        return Err(err(if from_file {
+            "export needs at least one address; --addresses FILE listed no addresses and no --address was given"
+        } else {
+            "export needs at least one address: repeat --address 'PROJECT|TASK' or pass --addresses FILE with a JSON array of strings"
+        }));
     }
     let mut targets = Vec::with_capacity(raw.len());
     for address in raw {
         let target = motif_target(&address)?;
         if target.project.is_none() {
             return Err(err(format!(
-                "export requires PROJECT|TASK addresses; got {address}"
+                "export requires full PROJECT|TASK keys; got {address:?}. Quote 'PROJECT|TASK' in PowerShell so the pipe stays in one argument"
             )));
         }
         targets.push(target);
@@ -348,7 +379,11 @@ pub fn run(args: &[String]) -> Result<()> {
         .motifs
         .iter()
         .find(|m| m.id == motif_id)
-        .ok_or_else(|| err("motif id is not present in the pinned query result"))?;
+        .ok_or_else(|| {
+            err(format!(
+                "motif {motif_id:?} is not in the pinned query result for the selected addresses on the current publication; it is not a general occurrence id"
+            ))
+        })?;
 
     let exe = std::env::current_exe().map_err(|e| err(format!("current executable: {e}")))?;
     let binary_sha256 = digest_file(&exe)?;
