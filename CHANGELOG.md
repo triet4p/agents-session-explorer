@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-28
+
 ### Fixed
 
 - Fixed stdout output when the reading end of a pipe closes early. Help, JSON, text and direct line output now end quietly with the command's normal exit code instead of panicking, and a business error such as `open` `generation_mismatch` still exits `4`; other write failures are reported and exit `1` instead of being swallowed. A consumer that reads everything sees the same bytes, stderr and exit codes.
