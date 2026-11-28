@@ -20,7 +20,7 @@ use crate::journal_projection::{
 };
 use crate::cli_option::{has, opt, positional};
 use crate::cli_output::emit;
-use crate::index::index_path;
+use crate::index::{check_generation_pin, index_path};
 use crate::show::unique_session;
 
 fn work_usage() {
@@ -28,7 +28,7 @@ fn work_usage() {
         "ase work project [--index FILE] [--omp-root DIR] [--start ISO --end ISO]\n\
          [--out ROWS.jsonl] [--limit N] [--json]\n\
          ase work session (--session ID | --file N) [--leaf ENTRY_ID] [--omp-root DIR]\n\
-         [--out PROJECTION.json] [--json]\n\
+         [--generation G] [--out PROJECTION.json] [--json]\n\
          ase work reopen PROJECTION.json [--index FILE] [--json]\n\
          ase work delta --task TOKEN [--project PROJECT] --before CHILD_SESSION_ID\n\
          \n         --after CHILD_SESSION_ID [--omp-root DIR] [--out DELTA.json]\n\
@@ -245,6 +245,7 @@ fn cmd_work_project(args: &[String]) -> Result<()> {
 
 
 fn cmd_work_session(args: &[String]) -> Result<()> {
+    check_generation_pin(args, "work session")?;
     let (idx, store, generation) = load_work(args)?;
     let omp_root = opt(args, "--omp-root").unwrap_or_else(|| config::omp_root());
     let file_id = if let Some(session) = opt(args, "--session") {

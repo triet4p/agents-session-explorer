@@ -283,7 +283,7 @@ runs, so rebuilding will not reproduce the published digest.
 |---|---|
 | Index | `ase index` builds the address layer and optional postings layer; one generation is published atomically behind `<index>.pub.json`. |
 | Search and evidence | `ase search` (JSON by default, `--text` for a metadata-only hit list), `ase open` (JSON by default, `--text` for a metadata-only reopen status), `ase show`, `ase shingle`, `ase verify` return metadata and reopen exact spans; `--content` is the only way to print source text. |
-| Navigation | `ase search --open-args` and `ase open --session-args` emit exact `open`/`show`/`resolve`/`work` flags for a verified block; ambiguous session ids are refused. |
+| Navigation | `ase search --open-args` and `ase open --session-args` emit exact `open`/`show`/`resolve`/`work` flags for a verified block. Locators keep the logical `--index FILE` and pin the generation; a republished path makes old flags stop with `generation_mismatch` (exit `4`) rather than read a newer snapshot. Ambiguous, path-derived and unverified ids are refused. |
 | Identity | `ase resolve`, `ase audit naming`, `ase audit delegation`, `ase audit markers` reconcile naming grammar, delegation and `task_id=` markers with inspectable evidence. |
 | Work and analytics | `ase work project\|session\|reopen\|compare\|delta` projects turns/episodes; `ase analytics` reports stored cost, duration and clock unions. |
 | Patterns | `ase motif`, `ase shingle`, and `ase adapter omp-stock` produce advisory, evidence-pinned claims; adapter claims never write membership. |
@@ -315,6 +315,13 @@ Run any subcommand with `--help` for its exact flags, for example
   snippet. `open` re-reads the raw span, re-derives the block and reports
   `verified_against_index_snapshot` only when the span checksum and block digest
   both match.
+
+- `open --session-args` locators keep the logical `--index FILE` and add an
+  explicit `--generation` to their `show`, `resolve` and `work session` flags.
+  Reusing a locator after a republish stops with `generation_mismatch` (exit `4`)
+  before raw is read; search again on the intended `--index` for a new locator
+  instead of editing the old pin. Saved flag arrays that point straight at an
+  address still open only that address while it exists.
 
 ## Safety and privacy defaults
 

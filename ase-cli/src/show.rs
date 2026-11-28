@@ -4,7 +4,7 @@
 //! metadata audits; `show` renders one session or span target.
 
 use crate::cli_option::{has, opt, positional};
-use crate::index::load;
+use crate::index::{check_generation_pin, load};
 use ase_core::{err, EventIdx, RawStore, Result, Role, SpanRef, NONE};
 use ase_ingest::util::fnv64;
 use ase_index::{FsRawStore, Index};
@@ -138,6 +138,7 @@ fn event_json(
 
 pub fn run(args: &[String]) -> Result<()> {
     let target = positional(args).ok_or_else(|| err("show needs a target"))?;
+    check_generation_pin(args, "show")?;
     let (idx, store) = load(args)?;
     let explain = has(args, "--explain");
     let content = has(args, "--content");

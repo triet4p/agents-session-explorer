@@ -6,6 +6,8 @@
 
 - Fixed `audit naming`, `audit delegation` and work/analytics readers to resolve the logical `--index FILE` through the same publication seam as the other index readers. They now read the pinned generation address when the publication is usable; with an unusable sidecar they use the named path only if it is itself a usable address, while derived-layer commands still refuse instead of reporting an empty result.
 
+- Fixed `ase open --session-args` locators to keep the logical `--index FILE` and pin the generation explicitly in their `show`, `resolve` and `work session` flag arrays. Pinned commands now stop with `generation_mismatch` (exit `4`) before reading raw when the publication moved to another generation; a missing or unusable publication is refused before raw, and saved flag arrays that name an address directly still open only that address. Search again for a fresh locator instead of editing an old pin.
+
 ## [0.8.0] - 2026-11-28
 
 ### Added

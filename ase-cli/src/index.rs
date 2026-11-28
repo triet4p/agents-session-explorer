@@ -5,6 +5,7 @@
 //! here; no model, network or prose is consulted.
 
 use crate::cli_option::{has, opt};
+use crate::cli_output::emit;
 use crate::config;
 use ase_core::{err, Result};
 use ase_index::{build, decode_corpus, sha256_hex, write_address, DecodedCorpus, FsRawStore, Index};
@@ -35,6 +36,38 @@ pub(crate) fn resolve_source(args: &[String]) -> (PathBuf, Option<Publication>, 
         Ok(None) => (logical, None, Some("sidecar_missing".to_string())),
         Err(e) => (logical, None, Some(e.to_string())),
     }
+}
+
+/// Guard an explicit `--generation` pin before a reader touches raw bytes.
+/// Saved flag arrays without the pin keep their address-only behavior.
+pub(crate) fn check_generation_pin(args: &[String], command: &str) -> Result<()> {
+    let Some(pinned) = opt(args, "--generation") else {
+        return Ok(());
+    };
+    let logical = index_path(args);
+    let published = match publication::open(&logical) {
+        Ok(Some(published)) => published,
+        Ok(None) => {
+            return Err(err(format!(
+                "{command}: a pinned --generation needs a usable publication at {}",
+                logical.display()
+            )))
+        }
+        Err(e) => return Err(err(format!("{command}: publication unavailable ({e})"))),
+    };
+    if pinned != published.generation {
+        let v = json!({
+            "command": command,
+            "status": "generation_mismatch",
+            "requested_generation": &pinned,
+            "active_generation": &published.generation,
+            "address_usable": true,
+            "note": "refused before reading raw: the locator belongs to another generation; search again on the intended --index"
+        });
+        emit(&v, args);
+        std::process::exit(4);
+    }
+    Ok(())
 }
 
 /// Open one resolved address. A failed address read also names why the

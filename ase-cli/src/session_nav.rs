@@ -1,9 +1,9 @@
 //! Session locators for one verified evidence block.
 //!
-//! A locator is emitted only from a session whose id is declared in its own
-//! header, still re-reads to that id, and is unique in the pinned index. The
-//! pinned generation address is the snapshot every emitted command targets;
-//! a rebuilt base index or a path-derived id never yields a shortcut.
+//! header, still re-reads to that id, and is unique in the pinned index. Each
+//! locator keeps the chosen logical index path and pins the generation
+//! explicitly; a rebuilt base index or a path-derived id never yields a
+//! shortcut.
 
 use crate::show::span_label;
 use ase_core::{EventIdx, Provider, RawStore, Result, NONE};
@@ -55,6 +55,15 @@ fn snapshot(published: &Publication) -> Value {
     })
 }
 
+/// Flag array that keeps the logical index path and pins one generation.
+fn locator_flags(target: &str, index: &str, generation: &str, explain: bool) -> Value {
+    if explain {
+        json!([target, "--index", index, "--generation", generation, "--explain"])
+    } else {
+        json!([target, "--index", index, "--generation", generation])
+    }
+}
+
 /// Session navigation for one `open` result. `verified` is the same decision
 /// `open` reports; an unverified block never receives ready-to-run commands.
 pub(crate) fn session_args(
@@ -63,6 +72,7 @@ pub(crate) fn session_args(
     published: &Publication,
     event: EventIdx,
     verified: bool,
+    index: &str,
 ) -> Result<Value> {
     if !verified {
         return Ok(refused(
@@ -165,14 +175,13 @@ pub(crate) fn session_args(
             json!({"id": &id, "matches": matches.len()}),
         ));
     }
-    let address = published.address_path.to_string_lossy().replace('\\', "/");
     let target = format!("session:{id}");
-    let show_flags = json!([target, "--index", &address]);
-    let resolve_flags = json!([target, "--index", &address, "--explain"]);
+    let show_flags = locator_flags(&target, index, &published.generation, false);
+    let resolve_flags = locator_flags(&target, index, &published.generation, true);
     let work = if provider == Provider::Omp {
         json!({
             "available": true,
-            "flags": ["--session", &id, "--index", &address],
+            "flags": ["--session", &id, "--index", index, "--generation", &published.generation],
             "leaf": {
                 "default": "active",
                 "explicit_flag": "--leaf",
@@ -221,5 +230,18 @@ mod tests {
         assert_eq!(declared_session_id(Provider::Omp, omp_message), None);
         assert_eq!(declared_session_id(Provider::Codex, derived), None);
         assert_eq!(declared_session_id(Provider::Omp, b"{not json"), None);
+    }
+
+    #[test]
+    fn test_locator_flags_pin_the_logical_index_and_generation() {
+        let logical = "dir with space/ase.index";
+        let flags = super::locator_flags("session:omp-id", logical, "gen-1", false);
+        assert_eq!(flags[0], serde_json::json!("session:omp-id"));
+        assert_eq!(flags[1], serde_json::json!("--index"));
+        assert_eq!(flags[2], serde_json::json!(logical));
+        assert_eq!(flags[3], serde_json::json!("--generation"));
+        assert_eq!(flags[4], serde_json::json!("gen-1"));
+        let resolve = super::locator_flags("session:omp-id", logical, "gen-1", true);
+        assert_eq!(resolve[5], serde_json::json!("--explain"));
     }
 }

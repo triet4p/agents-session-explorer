@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::audit::{delegation_inputs, naming_sources};
 use crate::marker_audit::{marker_evidence, verified_prose};
 use crate::cli_option::{has, positional};
-use crate::index::{index_path, load_with_publication};
+use crate::index::{check_generation_pin, index_path, load_with_publication};
 use crate::show::{parse_span, span_label, unique_session};
 use ase_core::{err, EventIdx, RawStore, Result, NONE};
 use ase_ingest::util::fnv64;
@@ -23,6 +23,7 @@ use ase_task::{
 
 pub fn run(args: &[String]) -> Result<()> {
     let target = positional(args).ok_or_else(|| err("resolve needs a target"))?;
+    check_generation_pin(args, "resolve")?;
     let (idx, store, published, publication_reason) = load_with_publication(args)?;
     let idx = &idx;
     let explain = has(args, "--explain");

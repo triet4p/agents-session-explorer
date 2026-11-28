@@ -110,8 +110,9 @@ fn usage() {
          ase index   [--layer address|postings|all] [--omp-root DIR] [--codex-root DIR]\n\
                      [--index FILE] [--fail-before-publish] [--json]\n\
                      (--index FILE is a logical path; a published generation pins its address for every reader)\n\
-         ase show    <span:F:L:LEN|session:ID> [--role ROLE] [--ordinal A:B] [--explain] [--content] [--json]\n\
-         ase resolve <session:ID|span:F:L:LEN|task:TOKEN> [--explain] [--json]\n\
+         ase show    <span:F:L:LEN|session:ID> [--role ROLE] [--ordinal A:B] [--explain]\n\
+                     [--content] [--generation G] [--json]\n\
+         ase resolve <session:ID|span:F:L:LEN|task:TOKEN> [--explain] [--generation G] [--json]\n\
          ase verify  [--all | --sample N] [--index FILE] [--json]\n\
          ase verify  <BUNDLE-DIR> [--local-map FILE] [--verdicts FILE] [--json]\n\
          ase bench-show [--n N] [--seed N] [--index FILE] [--json]\n\
@@ -120,6 +121,7 @@ fn usage() {
          ase open    --event N --selector S --generation G [--index FILE] [--text]\n\
                      [--session-args] [--content] [--json]\n\
                      (--text is metadata-only and excludes --json, --content and --session-args)\n\
+         (--generation G pins the active publication for show/resolve/work session; a stale locator exits 4)\n\
          ase shingle (--hash HASH | --event N) [--json]\n\
          ase bench-search [--n N] [--seed N] [--top-k N] [--source all|jsonl|zstd] [--probe TERM] [--json]\n\
          ase fixture --out DIR\n\

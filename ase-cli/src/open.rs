@@ -5,7 +5,7 @@
 
 use crate::cli_option::{has, opt};
 use crate::cli_output::emit;
-use crate::index::require_publication;
+use crate::index::{index_path, require_publication};
 use crate::session_nav::session_args;
 use crate::show::{freshness_json, span_label};
 use ase_postings::block_by_selector;
@@ -170,7 +170,8 @@ pub fn run(args: &[String]) -> Result<()> {
     let status = evidence_status(span_ok, block_ok);
     let verified = status == "verified_against_index_snapshot";
     let navigation = if has(args, "--session-args") {
-        Some(session_args(&idx, &store, &published, event, verified)?)
+        let index = index_path(args).to_string_lossy().into_owned();
+        Some(session_args(&idx, &store, &published, event, verified, &index)?)
     } else {
         None
     };

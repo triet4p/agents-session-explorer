@@ -14,6 +14,8 @@ Trang này định nghĩa **đơn vị tham chiếu và điều kiện để tin
 
 **Đã có (CLI).** Mọi lệnh đọc index chọn nguồn qua cùng một đường dẫn logic `--index FILE` (mặc định `ase.index`). Sidecar hợp lệ ghim address của đúng generation đã kiểm; `audit`, `work`/`analytics`, `verify`, `bench-*` và các lệnh dẫn xuất cùng mở address đó. Khi sidecar thiếu/hỏng, lệnh chỉ đọc address tiếp tục nếu chính `FILE` là address mở được; lệnh cần tầng dẫn xuất từ chối thay vì trả tập rỗng. Truyền trực tiếp `generations/<G>/address.bin` vẫn là address-only; CLI không dò publication theo thư mục hay tự chọn generation mới.
 
+**Đã có (CLI).** Locator từ `search --open-args` và `open --session-args` giữ đường dẫn logic `--index FILE` và ghim generation tường minh cho `open`, `show`, `resolve` và `work session`. Khi cùng đường dẫn được publish lại sang generation khác, cờ cũ báo `generation_mismatch` (exit `4`) trước khi đọc raw: không đọc journal của snapshot khác, không rơi sang address rời. Mảng cờ đã lưu trỏ thẳng address cũ vẫn mở đúng address đó hoặc lỗi nếu address không còn. Muốn locator mới thì search lại, không sửa pin cũ.
+
 **Đề xuất.** Con trỏ xuyên build cần `build_id`, tham chiếu nguồn trong manifest riêng tư, provider, encoding, coordinate, ordinal, off, len và digest mạnh của **đúng byte dòng**. Đổi đường dẫn không tự chứng minh cùng nguồn; ordinal chỉ giúp tìm lại ứng viên rồi phải kiểm byte. Kiểm tràn, giới hạn và khớp địa chỉ chính xác trước khi giải mã. Digest dòng không thay thế khóa occurrence: hai dòng bằng nhau ở hai nơi vẫn là hai lần xảy ra. Không lấy offset trong chuỗi JSON đã unescape làm offset nguồn.
 
 <a id="projection"></a>
