@@ -5,7 +5,7 @@
 //! selectors that `open` re-derives from the raw address.
 
 use crate::cli_option::{has, opt, positional};
-use crate::cli_output::emit;
+use crate::cli_output::{emit, outln};
 use crate::index::{index_path, load_with_publication};
 use crate::show::{freshness_json, span_label};
 use ase_core::{err, Result};
@@ -25,7 +25,7 @@ fn conflicting_text_flag(args: &[String]) -> Option<&'static str> {
 }
 
 pub(crate) fn search_usage() {
-    println!(
+    outln!(
         "ase search <QUERY> [--index FILE] [--phrase] [--top-k N] [--text]\n\
          [--explain] [--open-args] [--json]\n\
          --text prints the hit count, full generation and metadata-only hit lines; it excludes\n\
@@ -114,7 +114,7 @@ pub fn run(args: &[String]) -> Result<()> {
     let Some(published) = published else {
         if has(args, "--text") {
             for line in unavailable_text() {
-                println!("{line}");
+                outln!("{line}");
             }
         } else {
             let v = unavailable_value("search", &reason.unwrap_or_else(|| "unknown".to_string()));
@@ -155,7 +155,7 @@ pub fn run(args: &[String]) -> Result<()> {
         })
         .collect();
     if has(args, "--text") {
-        println!("{}", render_text(&published.generation, &index, &rendered));
+        outln!("{}", render_text(&published.generation, &index, &rendered));
         return Ok(());
     }
     let query_hash = sha256_hex(query.as_bytes());

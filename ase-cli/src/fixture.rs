@@ -4,6 +4,7 @@
 //! the caller's output path.
 
 use crate::cli_option::opt;
+use crate::cli_output::outln;
 use ase_core::{err, Result};
 use std::path::PathBuf;
 
@@ -42,7 +43,7 @@ pub fn run(args: &[String]) -> Result<()> {
         .map_err(|e| err(format!("zstd fixture: {e}")))?;
     std::fs::write(codex.join("synthetic.jsonl.zst"), compressed)
         .map_err(|e| err(format!("write fixture: {e}")))?;
-    println!("wrote synthetic fixtures to {}", out.display());
+    outln!("wrote synthetic fixtures to {}", out.display());
     Ok(())
 }
 
@@ -87,6 +88,6 @@ pub fn run_address(args: &[String]) -> Result<()> {
         .map_err(|e| err(format!("write fixture: {e}")))?;
     std::fs::write(codex.join("synthetic-addr-second.jsonl"), ADDRESS_CODEX_SECOND)
         .map_err(|e| err(format!("write fixture: {e}")))?;
-    println!("wrote synthetic address fixtures to {}", out.display());
+    outln!("wrote synthetic address fixtures to {}", out.display());
     Ok(())
 }

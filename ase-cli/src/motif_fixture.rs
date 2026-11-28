@@ -5,6 +5,7 @@
 //! detection policy lives here.
 
 use crate::cli_option::opt;
+use crate::cli_output::outln;
 use ase_core::{err, Result};
 use serde_json::{json, Value};
 use std::fs;
@@ -244,7 +245,7 @@ pub fn run(args: &[String]) -> Result<()> {
         fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
     }
 
-    println!(
+    outln!(
         "wrote {} synthetic motif fixture tasks to {}",
         MOTIF_FIXTURE_TASKS.len(),
         out.display()

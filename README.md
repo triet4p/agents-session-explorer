@@ -196,6 +196,17 @@ same open, then add `--content` explicitly. Default JSON output and the
 `open_args.flags` splat above are unchanged. Transcripts, shell queries, metadata and
 the derived index stay local data — do not copy them into an evidence dossier.
 
+### Piping output
+
+A consumer that stops reading, such as `ase search 'TERM' --index $index --text |
+Select-Object -First 5` (or `| head` on other shells), closes the pipe. `ase` then ends
+output quietly with the command's normal exit code: no panic text, backtrace or pipe
+error on stderr, and a `generation_mismatch` still exits `4`. Other write failures
+remain errors: they are reported on stderr and the command exits `1`, so a command is
+never turned into success because stdout closed. When
+the consumer reads everything, stdout bytes, stderr and exit codes are unchanged, so
+filtering with a pipe never changes the status of the command itself.
+
 ### Readable search hits
 
 `ase search <QUERY> --index FILE --text` is new in `v0.8.0`. It prints the

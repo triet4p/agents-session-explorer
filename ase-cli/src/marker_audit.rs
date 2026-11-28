@@ -5,7 +5,7 @@
 //! block digest provenance without emitting prose text.
 
 use crate::cli_option::has;
-use crate::cli_output::emit;
+use crate::cli_output::{emit, outln};
 use crate::index::{index_path, require_publication};
 use crate::open::hash_bytes;
 use crate::show::span_label;
@@ -159,7 +159,7 @@ pub fn run_fixture(args: &[String]) -> Result<()> {
     }
     let path = omp.join("synthetic-markers-markers.jsonl");
     fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
-    println!(
+    outln!(
         "wrote {} synthetic marker fixture lines to {}",
         MARKER_FIXTURE_LINES.len(),
         out.display()

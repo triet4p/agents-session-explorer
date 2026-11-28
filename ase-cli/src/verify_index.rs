@@ -5,6 +5,7 @@
 //! address spans.
 
 use crate::cli_option::{has, opt, positional};
+use crate::cli_output::outln;
 use crate::index::load;
 use crate::verify;
 use crate::show::span_label;
@@ -72,9 +73,9 @@ pub fn run(args: &[String]) -> Result<()> {
         "failures": failures
     });
     if has(args, "--json") {
-        println!("{}", serde_json::to_string_pretty(&v).unwrap());
+        outln!("{}", serde_json::to_string_pretty(&v).unwrap());
     } else {
-        println!(
+        outln!(
             "verify: {}/{} spans ok ({} failed), {} bytes re-read, {} ms, coverage {:.4}",
             ok, targets.len(), failed, bytes_read, started.elapsed().as_millis(),
             v["coverage"].as_f64().unwrap_or(0.0)

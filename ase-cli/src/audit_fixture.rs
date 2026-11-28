@@ -1,6 +1,7 @@
 //! Synthetic naming and delegation fixtures for metadata-only audits.
 
 use crate::cli_option::opt;
+use crate::cli_output::outln;
 use ase_core::{err, Result};
 use std::fs;
 use std::path::PathBuf;
@@ -42,7 +43,7 @@ pub fn run_naming(args: &[String]) -> Result<()> {
             written += 1;
         }
     }
-    println!("wrote {written} synthetic naming fixtures to {}", out.display());
+    outln!("wrote {written} synthetic naming fixtures to {}", out.display());
     Ok(())
 }
 
@@ -114,7 +115,7 @@ pub fn run_delegation(args: &[String]) -> Result<()> {
         fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
         written += 1;
     }
-    println!(
+    outln!(
         "wrote {written} synthetic delegation fixtures to {}",
         out.display()
     );

@@ -2,6 +2,7 @@
 //! unresolved signals, including cross-project tokens and delegation edges.
 
 use crate::cli_option::opt;
+use crate::cli_output::outln;
 use ase_core::{err, Result};
 use std::fs;
 use std::path::PathBuf;
@@ -136,7 +137,7 @@ pub fn run(args: &[String]) -> Result<()> {
         }
         fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
     }
-    println!(
+    outln!(
         "wrote {} synthetic resolve fixtures to {}",
         RESOLVE_FIXTURE.len(),
         out.display()

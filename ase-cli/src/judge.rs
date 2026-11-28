@@ -8,6 +8,7 @@
 use ase_core::{err, Result};
 use ase_judge::Scope;
 use crate::cli_option::{has, opt};
+use crate::cli_output::outln;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -36,7 +37,7 @@ pub fn run(args: &[String]) -> Result<()> {
 }
 
 pub(crate) fn usage() {
-    println!(
+    outln!(
         "ase judge run --root DIR --manifest FILE --units FILE --private FILE\n\
          \x20           --store FILE [--scope primary|unknown|all] [--only-ordinal N]...\n\
          \x20           [--limit N] [--workspace DIR] [--verification-only]\n\
@@ -271,7 +272,7 @@ fn run_evaluation(args: &[String]) -> Result<()> {
         fs::write(&out, serde_json::to_string_pretty(&value).unwrap() + "\n")
             .map_err(|e| err(format!("write judge report {out}: {e}")))?;
     }
-    println!("{}", serde_json::to_string_pretty(&value).unwrap());
+    outln!("{}", serde_json::to_string_pretty(&value).unwrap());
     Ok(())
 }
 
@@ -288,7 +289,7 @@ fn verify_evaluation(args: &[String]) -> Result<()> {
     let report = ase_judge::verify(&options)?;
     let value = serde_json::to_value(&report)
         .map_err(|e| err(format!("serialize judge verify report: {e}")))?;
-    println!("{}", serde_json::to_string_pretty(&value).unwrap());
+    outln!("{}", serde_json::to_string_pretty(&value).unwrap());
     if report.status != "verified" {
         std::process::exit(3);
     }
@@ -298,7 +299,7 @@ fn verify_evaluation(args: &[String]) -> Result<()> {
 fn report_store(args: &[String]) -> Result<()> {
     let store = PathBuf::from(opt(args, "--store").ok_or_else(|| err("--store is required"))?);
     let value = ase_judge::report(&store, has(args, "--include-verification"))?;
-    println!("{}", serde_json::to_string_pretty(&value).unwrap());
+    outln!("{}", serde_json::to_string_pretty(&value).unwrap());
     Ok(())
 }
 
@@ -319,14 +320,14 @@ fn show_store(args: &[String]) -> Result<()> {
         decision,
         has(args, "--include-verification"),
     )?;
-    println!("{}", serde_json::to_string_pretty(&value).unwrap());
+    outln!("{}", serde_json::to_string_pretty(&value).unwrap());
     Ok(())
 }
 
 fn write_fixture(args: &[String]) -> Result<()> {
     let out = PathBuf::from(opt(args, "--out").ok_or_else(|| err("--out is required"))?);
     let value = ase_judge::write_fixture(&out)?;
-    println!("{}", serde_json::to_string_pretty(&value).unwrap());
+    outln!("{}", serde_json::to_string_pretty(&value).unwrap());
     Ok(())
 }
 
@@ -373,6 +374,6 @@ fn contract_runner(args: &[String]) -> Result<()> {
         "stage": stage,
         "received_input_sha256": request.get("input_sha256"),
     });
-    println!("{}", serde_json::to_string(&response).unwrap());
+    outln!("{}", serde_json::to_string(&response).unwrap());
     Ok(())
 }

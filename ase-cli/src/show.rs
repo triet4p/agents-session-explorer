@@ -4,6 +4,7 @@
 //! metadata audits; `show` renders one session or span target.
 
 use crate::cli_option::{has, opt, positional};
+use crate::cli_output::outln;
 use crate::index::{check_generation_pin, load};
 use ase_core::{err, EventIdx, RawStore, Result, Role, SpanRef, NONE};
 use ase_ingest::util::fnv64;
@@ -186,12 +187,12 @@ pub fn run(args: &[String]) -> Result<()> {
         "events": events
     });
     if has(args, "--json") {
-        println!("{}", serde_json::to_string_pretty(&v).unwrap());
+        outln!("{}", serde_json::to_string_pretty(&v).unwrap());
     } else {
         let empty_arr: Vec<Value> = Vec::new();
         for e in &events {
             let f = e["span"].as_str().unwrap_or("");
-            println!(
+            outln!(
                 "{} file={} {}/{} kind={} role={} tag={} ordinal={} freshness={}",
                 f,
                 e["file"],
@@ -205,14 +206,14 @@ pub fn run(args: &[String]) -> Result<()> {
             );
             if explain {
                 for step in e["explain"].as_array().unwrap_or(&empty_arr) {
-                    println!("    - {}", step.as_str().unwrap_or(""));
+                    outln!("    - {}", step.as_str().unwrap_or(""));
                 }
             }
             if content {
-                println!("    content: {}", e["content"].as_str().unwrap_or(""));
+                outln!("    content: {}", e["content"].as_str().unwrap_or(""));
             }
         }
-        println!("show: {} event(s), truncated={}", found.len(), truncated);
+        outln!("show: {} event(s), truncated={}", found.len(), truncated);
     }
     Ok(())
 }

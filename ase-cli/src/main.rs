@@ -7,6 +7,7 @@
 //! dispatches and reports process-level errors.
 
 use ase_core::err;
+use crate::cli_output::outln;
 
 mod adapter;
 mod adapter_fixture;
@@ -109,7 +110,7 @@ fn main() {
 }
 
 fn usage() {
-    println!(
+    outln!(
         "ase (address index / derived search)\n\n\
          ase index   [--layer address|postings|all] [--omp-root DIR] [--codex-root DIR]\n\
                      [--index FILE] [--fail-before-publish] [--json]\n\

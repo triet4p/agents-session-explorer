@@ -7,6 +7,7 @@
 
 use crate::cli_option::parse_opt;
 use crate::cli_option::{has, positionals};
+use crate::cli_output::outln;
 use crate::index::require_publication;
 use crate::show::span_label;
 use ase_core::{err, NONE, Result};
@@ -278,9 +279,9 @@ pub fn run(args: &[String]) -> Result<()> {
     });
 
     if has(args, "--json") {
-        println!("{}", serde_json::to_string_pretty(&v).unwrap());
+        outln!("{}", serde_json::to_string_pretty(&v).unwrap());
     } else {
-        println!(
+        outln!(
             "motif: {} task(s), {} distinct sequence(s) ({} raw, {} duplicate text), {} family(ies), {} motif(s)",
             report.tasks,
             report.sequences,
@@ -290,7 +291,7 @@ pub fn run(args: &[String]) -> Result<()> {
             report.motifs.len()
         );
         for exclusion in &report.excluded_tasks {
-            println!(
+            outln!(
                 "  excluded task {} ({})",
                 exclusion.task,
                 exclusion.reason.label()
@@ -307,7 +308,7 @@ pub fn run(args: &[String]) -> Result<()> {
                 .lift
                 .map(|value| format!("{value:.2}"))
                 .unwrap_or_else(|| "-".to_string());
-            println!(
+            outln!(
                 "  {} tasks={}/{} exact={} relaxed={:?} z={} lift={} occurrences={}",
                 motif.id,
                 motif.denominator.tasks_in_family,
@@ -318,12 +319,12 @@ pub fn run(args: &[String]) -> Result<()> {
                 lift,
                 motif.occurrences.len()
             );
-            println!(
+            outln!(
                 "    signatures: {}",
                 motif.signatures.join(" -> ")
             );
             for occurrence in &motif.occurrences {
-                println!(
+                outln!(
                     "    occurrence task={} attempt={} gap={} text_duplicate={} first_event={}",
                     occurrence.task,
                     occurrence.attempt,
@@ -339,7 +340,7 @@ pub fn run(args: &[String]) -> Result<()> {
         }
         if has(args, "--explain") {
             for step in v["explain"].as_array().into_iter().flatten() {
-                println!("  step: {}", step.as_str().unwrap_or(""));
+                outln!("  step: {}", step.as_str().unwrap_or(""));
             }
         }
     }

@@ -16,13 +16,13 @@ use crate::journal_projection::{
     ProjectedWork, SelectedWork, WorkFile,
 };
 use crate::cli_option::{has, opt, positional};
-use crate::cli_output::emit;
+use crate::cli_output::{emit, outln};
 use crate::show::unique_session;
 
 // -------------------------------------------------------- runtime analytics
 
 pub(crate) fn analytics_usage() {
-    println!(
+    outln!(
         "ase analytics project [--index FILE] [--omp-root DIR] [--start ISO --end ISO]\n\
          [--out ROWS.jsonl] [--report REPORT.json] [--limit N] [--json]\n\
          ase analytics session (--session ID | --file N) [--leaf ENTRY_ID]\n\

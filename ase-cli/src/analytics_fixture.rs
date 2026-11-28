@@ -9,6 +9,7 @@ use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
 use crate::cli_option::opt;
+use crate::cli_output::outln;
 
 // Synthetic producer-shaped OMP journals for a deterministic runtime check. No
 // corpus path, prose or private identifier is written; each file isolates one
@@ -160,6 +161,6 @@ pub(crate) fn run(args: &[String]) -> Result<()> {
         Some(1000.0), Some(300.0), Some(0.05), true));
     write("p-gaps/gaps.jsonl", gaps)?;
 
-    println!("wrote 5 synthetic runtime-analytics OMP fixtures to {}", out.display());
+    outln!("wrote 5 synthetic runtime-analytics OMP fixtures to {}", out.display());
     Ok(())
 }

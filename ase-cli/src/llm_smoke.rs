@@ -9,6 +9,7 @@
 
 use ase_core::{err, Result};
 use crate::cli_option::opt;
+use crate::cli_output::outln;
 use crate::llm::llm_expect;
 use serde_json::json;
 
@@ -169,7 +170,7 @@ fn print_smoke_diagnostic(
         "response": response,
         "text": text,
     });
-    println!(
+    outln!(
         "{}",
         serde_json::to_string_pretty(&report)
             .map_err(|e| err(format!("serialize llm smoke diagnostic: {e}")))?
@@ -318,7 +319,7 @@ pub fn run(args: &[String]) -> Result<()> {
         },
         "status": result.status,
     });
-    println!(
+    outln!(
         "{}",
         serde_json::to_string_pretty(&value)
             .map_err(|e| err(format!("serialize llm smoke report: {e}")))?

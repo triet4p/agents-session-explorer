@@ -5,6 +5,7 @@
 //! No resolver or motif membership is read or written here.
 
 use crate::cli_option::opt;
+use crate::cli_output::outln;
 use ase_core::{err, Result};
 use serde_json::{json, Value};
 use std::fs;
@@ -124,6 +125,6 @@ pub fn run(args: &[String]) -> Result<()> {
         "Synthetic handoff\n- task_id: W2a\n- attempt_id: A1\n",
     )
     .map_err(|e| err(format!("write synthetic handoff: {e}")))?;
-    println!("wrote synthetic stock adapter fixture to {}", out.display());
+    outln!("wrote synthetic stock adapter fixture to {}", out.display());
     Ok(())
 }

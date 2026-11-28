@@ -5,7 +5,7 @@
 //! here; no model, network or prose is consulted.
 
 use crate::cli_option::{has, opt};
-use crate::cli_output::emit;
+use crate::cli_output::{emit, outln};
 use crate::config;
 use ase_core::{err, Result};
 use ase_index::{build, decode_corpus, sha256_hex, write_address, DecodedCorpus, FsRawStore, Index};
@@ -383,13 +383,13 @@ pub fn run(args: &[String]) -> Result<()> {
         }
     });
     if has(args, "--json") {
-        println!("{}", serde_json::to_string_pretty(&v).unwrap());
+        outln!("{}", serde_json::to_string_pretty(&v).unwrap());
     } else {
-        println!(
+        outln!(
             "indexed layer {} with {} files / {} events; published generation {}",
             layer, corpus.files.len(), corpus.total_events, v["publication"]["generation"]
         );
-        println!(
+        outln!(
             "address={} postings={} manifest={} sidecar={} blocks={} shingles={}",
             address_bytes, postings_bytes, manifest_bytes, sidecar_bytes,
             writer_stats.blocks, writer_stats.shingles
@@ -416,13 +416,13 @@ fn print_index_json(
     json: bool,
 ) {
     if json {
-        println!("{}", serde_json::to_string_pretty(v).unwrap());
+        outln!("{}", serde_json::to_string_pretty(v).unwrap());
     } else {
-        println!(
+        outln!(
             "indexed {} files ({} omp, {} codex, {} zstd), {} events, {} sessions, {} bytes in {} ms",
             files, omp, codex, zstd, events, sessions, bytes, duration_ms
         );
-        println!(
+        outln!(
             "preserved: malformed={} unknown_type={} unresolved_parent={} unresolved_call={} multi_call={}",
             malformed, unknown, parent, link, multi
         );
@@ -430,7 +430,7 @@ fn print_index_json(
 }
 
 pub(crate) fn index_usage() {
-    println!(
+    outln!(
         "ase index [--layer address|postings|all] [--omp-root DIR] [--codex-root DIR]\n\
          [--index FILE] [--fail-before-publish] [--json]"
     );

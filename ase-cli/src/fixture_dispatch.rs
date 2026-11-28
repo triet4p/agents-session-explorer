@@ -5,6 +5,7 @@
 //! synthetic and every file is written below the caller's output path.
 
 use crate::cli_option::opt;
+use crate::cli_output::outln;
 use ase_core::{err, Result};
 use serde_json::json;
 use std::fs;
@@ -398,7 +399,7 @@ pub fn run(args: &[String]) -> Result<()> {
         }
         fs::write(&path, content).map_err(|e| err(format!("write {}: {e}", path.display())))?;
     }
-    println!(
+    outln!(
         "wrote {} synthetic dispatch fixtures to {}",
         DISPATCH_FIXTURE.len(),
         out.display()

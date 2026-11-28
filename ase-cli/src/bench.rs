@@ -4,7 +4,7 @@
 //! evidence checks, and leave timing values as the only measured fields.
 
 use crate::cli_option::{has, opt};
-use crate::cli_output::emit;
+use crate::cli_output::{emit, outln};
 use crate::index::{load, require_publication};
 use crate::open::hash_bytes;
 use ase_core::{err, RawStore, Result};
@@ -66,9 +66,9 @@ pub fn run_show(args: &[String]) -> Result<()> {
         "includes": "coordinate lookup + raw span read + checksum (in-process, no process startup)"
     });
     if has(args, "--json") {
-        println!("{}", serde_json::to_string_pretty(&v).unwrap());
+        outln!("{}", serde_json::to_string_pretty(&v).unwrap());
     } else {
-        println!(
+        outln!(
             "bench-show omp n={} p50={:.1}us p90={:.1}us p99={:.1}us max={:.1}us",
             n, v["p50_us"], v["p90_us"], v["p99_us"], v["max_us"]
         );

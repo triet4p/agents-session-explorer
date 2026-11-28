@@ -9,6 +9,7 @@ use std::sync::Arc;
 use crate::audit::{delegation_inputs, naming_sources};
 use crate::marker_audit::{marker_evidence, verified_prose};
 use crate::cli_option::{has, positional};
+use crate::cli_output::outln;
 use crate::index::{check_generation_pin, index_path, load_with_publication};
 use crate::show::{parse_span, span_label, unique_session};
 use ase_core::{err, EventIdx, RawStore, Result, NONE};
@@ -187,11 +188,11 @@ pub fn run(args: &[String]) -> Result<()> {
         ]
     });
     if has(args, "--json") {
-        println!("{}", serde_json::to_string_pretty(&v).unwrap());
+        outln!("{}", serde_json::to_string_pretty(&v).unwrap());
     } else {
-        println!("resolve {} -> {} ({} relation(s))", subject, status, relations.len());
+        outln!("resolve {} -> {} ({} relation(s))", subject, status, relations.len());
         for r in &relations {
-            println!(
+            outln!(
                 "  {} -> {} [{}] evidence={}",
                 r["kind"].as_str().unwrap_or(""),
                 r["target"].as_str().unwrap_or(""),
@@ -200,12 +201,12 @@ pub fn run(args: &[String]) -> Result<()> {
             );
         }
         if !note.is_empty() {
-            println!("  note: {note}");
+            outln!("  note: {note}");
         }
             let empty_arr: Vec<Value> = Vec::new();
         if explain {
             for s in v["explain"].as_array().unwrap_or(&empty_arr) {
-                println!("  step: {}", s.as_str().unwrap_or(""));
+                outln!("  step: {}", s.as_str().unwrap_or(""));
             }
         }
     }
@@ -597,17 +598,17 @@ fn cmd_resolve_task(
         ]
     });
     if has(args, "--json") {
-        println!("{}", serde_json::to_string_pretty(&v).unwrap());
+        outln!("{}", serde_json::to_string_pretty(&v).unwrap());
     } else {
-        println!(
+        outln!(
             "resolve task:{token} -> {} ({} candidate(s))",
             resolution.status.label(),
             resolution.candidates.len()
         );
-        println!("  {}", resolution.summary);
+        outln!("  {}", resolution.summary);
         for r in &relations {
             let target = &r["target"];
-            println!(
+            outln!(
                 "  {} -> project={} task={} state={} support={} refute={} context={}",
                 r["kind"].as_str().unwrap_or(""),
                 target["project"].as_str().unwrap_or("-"),
@@ -617,12 +618,12 @@ fn cmd_resolve_task(
                 r["refute"].as_array().map_or(0, Vec::len),
                 r["context"].as_array().map_or(0, Vec::len)
             );
-            println!("    reason: {}", r["reason"].as_str().unwrap_or(""));
+            outln!("    reason: {}", r["reason"].as_str().unwrap_or(""));
         }
         if explain {
             let empty_arr: Vec<Value> = Vec::new();
             for step in v["explain"].as_array().unwrap_or(&empty_arr) {
-                println!("  step: {}", step.as_str().unwrap_or(""));
+                outln!("  step: {}", step.as_str().unwrap_or(""));
             }
         }
     }

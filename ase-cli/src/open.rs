@@ -4,7 +4,7 @@
 //! all agree with the address snapshot and the current raw bytes.
 
 use crate::cli_option::{has, opt};
-use crate::cli_output::emit;
+use crate::cli_output::{emit, outln};
 use crate::index::{index_path, require_publication};
 use crate::session_nav::session_args;
 use crate::show::{freshness_json, span_label};
@@ -35,7 +35,7 @@ fn open_usage_text() -> &'static str {
 }
 
 pub(crate) fn open_usage() {
-    println!("{}", open_usage_text());
+    outln!("{}", open_usage_text());
 }
 
 /// Verified evidence requires both the pinned span checksum and the block digest.
@@ -138,7 +138,7 @@ pub fn run(args: &[String]) -> Result<()> {
             "note": "refused before reading raw: the hit belongs to another generation"
         });
         if text {
-            println!("{}", render_generation_mismatch(&v));
+            outln!("{}", render_generation_mismatch(&v));
         } else {
             emit(&v, args);
         }
@@ -211,7 +211,7 @@ pub fn run(args: &[String]) -> Result<()> {
         v["content"] = json!(content);
     }
     if text {
-        println!("{}", render_text(&v));
+        outln!("{}", render_text(&v));
         return Ok(());
     }
     emit(&v, args);

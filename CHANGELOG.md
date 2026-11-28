@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Fixed stdout output when the reading end of a pipe closes early. Help, JSON, text and direct line output now end quietly with the command's normal exit code instead of panicking, and a business error such as `open` `generation_mismatch` still exits `4`; other write failures are reported and exit `1` instead of being swallowed. A consumer that reads everything sees the same bytes, stderr and exit codes.
+
 - Fixed `audit naming`, `audit delegation` and work/analytics readers to resolve the logical `--index FILE` through the same publication seam as the other index readers. They now read the pinned generation address when the publication is usable; with an unusable sidecar they use the named path only if it is itself a usable address, while derived-layer commands still refuse instead of reporting an empty result.
 
 - Fixed `ase open --session-args` locators to keep the logical `--index FILE` and pin the generation explicitly in their `show`, `resolve` and `work session` flag arrays. Pinned commands now stop with `generation_mismatch` (exit `4`) before reading raw when the publication moved to another generation; a missing or unusable publication is refused before raw, and saved flag arrays that name an address directly still open only that address. Search again for a fresh locator instead of editing an old pin.

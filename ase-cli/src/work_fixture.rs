@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
 use crate::cli_option::opt;
+use crate::cli_output::outln;
 
 // ----------------------------------------------- explicit attempt delta
 
@@ -213,7 +214,7 @@ pub(crate) fn run(args: &[String]) -> Result<()> {
     unconfirmed.push_str(&delta_message_line("a1", Some("u1"), &delta_ts(1, 3), "assistant", true, 0));
     write("child-unconfirmed.jsonl", unconfirmed)?;
 
-    println!(
+    outln!(
         "wrote 7 synthetic attempt-delta OMP fixtures to {}",
         out.display()
     );

@@ -19,12 +19,12 @@ use crate::journal_projection::{
     ProjectedWork, SelectedWork, WorkFile,
 };
 use crate::cli_option::{has, opt, positional};
-use crate::cli_output::emit;
+use crate::cli_output::{emit, outln};
 use crate::index::{check_generation_pin, index_path};
 use crate::show::unique_session;
 
 pub(crate) fn work_usage() {
-    println!(
+    outln!(
         "ase work project [--index FILE] [--omp-root DIR] [--start ISO --end ISO]\n\
          [--out ROWS.jsonl] [--limit N] [--json]\n\
          ase work session (--session ID | --file N) [--leaf ENTRY_ID] [--omp-root DIR]\n\

@@ -13,6 +13,7 @@
 
 use ase_core::{err, Result};
 use crate::cli_option::{has, opt};
+use crate::cli_output::outln;
 use serde_json::json;
 
 pub fn run(args: &[String]) -> Result<()> {
@@ -35,7 +36,7 @@ pub fn run(args: &[String]) -> Result<()> {
 }
 
 pub(crate) fn llm_usage() {
-    println!(
+    outln!(
         "ase llm config [--json] [--profile NAME]\n\
          ase llm config set --profile NAME --provider NAME\n\
          \x20           [--type chat-completions|responses|decision|gemini|gemini-decision] [--endpoint URL]\n\
@@ -148,10 +149,10 @@ fn cmd_llm_config(args: &[String]) -> Result<()> {
                     "active": config.active,
                     "config_path": path.display().to_string(),
                 });
-                println!("{}", serde_json::to_string_pretty(&value).unwrap());
+                outln!("{}", serde_json::to_string_pretty(&value).unwrap());
             } else {
-                println!("saved profile {name} in {}", path.display());
-                println!(
+                outln!("saved profile {name} in {}", path.display());
+                outln!(
                     "next: run `ase llm key set --profile {name}` in a terminal (hidden input)"
                 );
             }
@@ -171,10 +172,10 @@ fn cmd_llm_config(args: &[String]) -> Result<()> {
                     "active": name,
                     "config_path": path.display().to_string(),
                 });
-                println!("{}", serde_json::to_string_pretty(&value).unwrap());
+                outln!("{}", serde_json::to_string_pretty(&value).unwrap());
             } else {
-                println!("active profile: {name}");
-                println!("credential is resolved for the endpoint origin, so a profile on the same origin reuses the stored key");
+                outln!("active profile: {name}");
+                outln!("credential is resolved for the endpoint origin, so a profile on the same origin reuses the stored key");
             }
             Ok(())
         }
@@ -226,9 +227,9 @@ fn cmd_llm_config(args: &[String]) -> Result<()> {
                     "origin": endpoint.origin,
                     "credential_store": store.backend(),
                 });
-                println!("{}", serde_json::to_string_pretty(&value).unwrap());
+                outln!("{}", serde_json::to_string_pretty(&value).unwrap());
             } else {
-                println!(
+                outln!(
                     "stored key for provider {} at {} in {}",
                     profile.provider,
                     endpoint.origin,
@@ -304,9 +305,9 @@ fn cmd_llm_key(args: &[String]) -> Result<()> {
                     "origin": profile.endpoint.origin,
                     "credential_store": store.backend(),
                 });
-                println!("{}", serde_json::to_string_pretty(&value).unwrap());
+                outln!("{}", serde_json::to_string_pretty(&value).unwrap());
             } else {
-                println!(
+                outln!(
                     "stored key for provider {} at {} in {}",
                     profile.provider,
                     profile.endpoint.origin,
@@ -331,16 +332,16 @@ fn cmd_llm_key(args: &[String]) -> Result<()> {
                     "credential_store": store.backend(),
                     "env_override_active": env_override,
                 });
-                println!("{}", serde_json::to_string_pretty(&value).unwrap());
+                outln!("{}", serde_json::to_string_pretty(&value).unwrap());
             } else {
-                println!(
+                outln!(
                     "{} credential for provider {} at {}",
                     if deleted { "deleted" } else { "no stored" },
                     profile.provider,
                     profile.endpoint.origin
                 );
                 if env_override {
-                    println!(
+                    outln!(
                         "note: a nonempty {} still overrides the store",
                         profile.api.key_env()
                     );
@@ -369,41 +370,41 @@ fn print_llm_status(
     let env = ase_llm::capture_env();
     let report = ase_llm::status(&env, profile.as_deref())?;
     if as_json {
-        println!(
+        outln!(
             "{}",
             serde_json::to_string_pretty(&report)
                 .map_err(|e| err(format!("serialize llm status: {e}")))?
         );
     } else {
-        println!("config: {}", report.config_path);
-        println!("config source: {}", report.config_source);
+        outln!("config: {}", report.config_path);
+        outln!("config source: {}", report.config_source);
         if let Some(name) = &report.profile {
-            println!("profile: {name}");
+            outln!("profile: {name}");
         }
         if let Some(value) = &report.provider {
-            println!("provider: {value}");
+            outln!("provider: {value}");
         }
         if let Some(value) = &report.api {
-            println!("api: {value}");
+            outln!("api: {value}");
         }
         if let Some(value) = &report.endpoint {
-            println!("endpoint: {value}");
+            outln!("endpoint: {value}");
         }
         if let Some(value) = &report.origin {
-            println!("origin: {value}");
+            outln!("origin: {value}");
         }
         if let Some(value) = &report.model {
-            println!("model: {value}");
+            outln!("model: {value}");
         }
-        println!(
+        outln!(
             "effort: {}",
             report.effort.as_deref().unwrap_or("none")
         );
-        println!(
+        outln!(
             "credential: {} ({})",
             report.credential_source, report.credential_store
         );
-        println!(
+        outln!(
             "env overrides: {}",
             if report.env_overrides.is_empty() {
                 "none".to_string()
@@ -412,21 +413,21 @@ fn print_llm_status(
             }
         );
         for note in &report.notes {
-            println!("note: {note}");
+            outln!("note: {note}");
         }
         for check in &report.checks {
-            println!(
+            outln!(
                 "check {}: {} ({})",
                 check.name,
                 if check.ok { "ok" } else { "failed" },
                 check.detail
             );
         }
-        println!("ready: {}", report.ready);
-        println!("network: not used");
+        outln!("ready: {}", report.ready);
+        outln!("network: not used");
         if !report.configured {
-            println!();
-            println!(
+            outln!();
+            outln!(
                 "one-time enrollment: ase llm config enroll --profile default \\\n  --type chat-completions \\\n  --endpoint https://api.openai.com/v1/chat/completions \\\n  --model <MODEL>"
             );
         }

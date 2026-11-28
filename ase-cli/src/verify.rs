@@ -26,6 +26,7 @@ use crate::bundle_schema::{
 };
 use crate::bundle_verdicts::cross_check;
 use crate::bundle_views::{render_evidence_view, render_questions_view};
+use crate::cli_output::outln;
 use ase_core::{err, Result};
 use ase_index::sha256_hex;
 use serde_json::{json, Value};
@@ -45,9 +46,9 @@ pub fn run_bundle(bundle: &str, args: &[String]) -> Result<()> {
     );
     let rendered = serde_json::to_string_pretty(&report).map_err(|e| err(format!("verify report: {e}")))?;
     if args.iter().any(|a| a == "--json") {
-        println!("{rendered}");
+        outln!("{rendered}");
     } else {
-        println!(
+        outln!(
             "bundle verify: {}; evidence {}/{} ({} failed, {} unverified), motifs {}/{}, assertions {}/{}",
             report["status"].as_str().unwrap_or("unverified"),
             report["evidence_verified"].as_u64().unwrap_or(0),

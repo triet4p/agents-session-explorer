@@ -14,6 +14,7 @@
 
 use crate::bundle_digest::value_digest;
 use crate::bundle_schema::LOCAL_MAP_SCHEMA;
+use crate::cli_output::outln;
 use crate::bundle_views::{render_evidence_view, render_questions_view};
 use crate::export_draft::{build_bundle_base, build_motif_skeleton};
 use crate::export_evidence::{
@@ -504,9 +505,9 @@ pub fn run(args: &[String]) -> Result<()> {
         "note": "Only observations and questions are exported; verdicts, catalog entries, raw output, real paths and alias mappings stay out of the bundle.",
     });
     if has(args, "--json") {
-        println!("{}", serde_json::to_string_pretty(&summary).unwrap());
+        outln!("{}", serde_json::to_string_pretty(&summary).unwrap());
     } else {
-        println!(
+        outln!(
             "bundle export: {}; bundle {}; representatives {}/{}; evidence {}/{}; verification {}",
             motif_id,
             assembled.bundle["bundle_id"].as_str().unwrap_or(""),

@@ -10,6 +10,7 @@
 use crate::bundle_digest::value_digest;
 use crate::bundle_schema::BUNDLE_VERSION;
 use crate::bundle_verdicts::assertion_body;
+use crate::cli_output::outln;
 use crate::verify;
 use ase_core::{err, Result};
 use ase_index::sha256_hex;
@@ -187,9 +188,9 @@ pub fn run(args: &[String]) -> Result<()> {
 
 fn emit(report: &Value, as_json: bool) -> Result<()> {
     if as_json {
-        println!("{}", serde_json::to_string_pretty(report).map_err(|e| err(format!("report: {e}")))?);
+        outln!("{}", serde_json::to_string_pretty(report).map_err(|e| err(format!("report: {e}")))?);
     } else {
-        println!(
+        outln!(
             "join skill-gap: {}; rows {} (match {}, no_match {}, ambiguous {}, insufficient_input {}), excluded {}; catalog {}, bundle {}",
             report["status"].as_str().unwrap_or("failed_closed"),
             report["rows_total"].as_u64().unwrap_or(0),
