@@ -315,6 +315,35 @@ output file. Help is recognized only where a flag is expected: a value that
 looks like help (for example `--event --help`) is still parsed as a value and
 keeps its normal error, and an unknown command or leaf still exits `2`.
 
+## Identity queries and motif cohorts
+
+`ase resolve task:TOKEN` and `ase motif TOKEN` answer different questions even
+when both print the same token. `resolve` reconciles a bare token through the
+name grammar, `task_id=` markers, delegation declarations, literal path
+matches and native OMP dispatch records; one project-scoped key can make it
+`assigned` without any dispatch join. `motif TOKEN` sends the same bare token
+only through the dispatch-backed membership validator, so a naming-only
+assignment yields no admitted attempt. `motif 'PROJECT|TOKEN'` applies the
+project scope before that validator and admits only attempts of the exact
+`(project, task)` key, without falling back to another project.
+
+When two projects share a token, a bare query stays ambiguous and their keys
+are never merged. Quote the scoped address in PowerShell so the pipe stays in
+one argument:
+
+```powershell
+ase resolve task:4 --index .\ase.index --json
+ase motif 4 --index .\ase.index --json
+ase motif 'Four4Alpha|4' 'Four4Beta|4' --index .\ase.index --json
+```
+
+The example uses the synthetic fixtures (`ase fixture-resolve`,
+`ase fixture-motif`, `ase fixture-dispatch`), not a user's corpus. Each task
+key is one support unit: three attempts on two keys give `support.exact = 2`,
+not 3. An assigned resolver token is not a promise of a motif sample, and a
+marker, path, suffix, prompt or adapter claim cannot create membership. The
+identity contract is in [DATA_CONTRACTS.md](docs/DATA_CONTRACTS.md#task).
+
 ## How data is stored
 
 - JSONL spans are addressed as `(file, off, len)` in raw file bytes. A

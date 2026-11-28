@@ -12,6 +12,10 @@
 
 - Fixed `--help` and `-h` across the CLI command tree: every top-level command, group and leaf now prints usage for its own path to stdout with empty stderr and exit `0`, without a positional argument, index, config, credential prompt, output file or network call. Help is recognized only in flag positions, so a value that resembles help and unknown command names keep their normal errors.
 
+### Changed
+
+- Clarified in `ase resolve --help`, `ase motif --help`, the README and the identity contract that `resolve task:TOKEN` reconciles a bare token across naming, marker, delegation, path and dispatch signals, while `motif` admits only dispatch-confirmed attempts of the addressed task key. `PROJECT|TOKEN` filters the project before dispatch so two projects sharing a token stay separate keys; a resolver `assigned` result is not a motif sample. No grammar, evidence rule, output schema or exit code changed.
+
 ## [0.8.0] - 2026-11-28
 
 ### Added

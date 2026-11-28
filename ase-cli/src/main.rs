@@ -118,6 +118,7 @@ fn usage() {
          ase show    <span:F:L:LEN|session:ID> [--role ROLE] [--ordinal A:B] [--explain]\n\
                      [--content] [--generation G] [--json]\n\
          ase resolve <session:ID|span:F:L:LEN|task:TOKEN> [--explain] [--generation G] [--json]\n\
+                     (task:TOKEN reconciles a bare token across resolver signals; assignment is not motif membership)\n\
          ase verify  [--all | --sample N] [--index FILE] [--json]\n\
          ase verify  <BUNDLE-DIR> [--local-map FILE] [--verdicts FILE] [--json]\n\
          ase bench-show [--n N] [--seed N] [--index FILE] [--json]\n\
@@ -142,8 +143,8 @@ fn usage() {
          ase motif  [PROJECT|TASK|TOKEN]... [--tau F] [--k-min N] [--k-max N]\n\
                      [--max-gap N] [--band N] [--max-substitutions N]\n\
                      [--null-permutations N] [--min-tasks N] [--explain] [--json]\n\
-                     (PROJECT|TASK addresses one exact sampling key; a bare\n\
-                     TOKEN stays ambiguous when two projects share it)\n\
+                     (PROJECT|TASK filters the project before dispatch and admits only confirmed joins;\n\
+                     a bare TOKEN stays ambiguous across projects; quote 'PROJECT|4' in PowerShell)\n\
          ase export motif:<id> --out DIR --local-map FILE\n\
                      (--address PROJECT|TASK ... | --addresses FILE)\n\
                      [--index FILE] [--omp-root DIR] [--codex-root DIR] [--json]\n\

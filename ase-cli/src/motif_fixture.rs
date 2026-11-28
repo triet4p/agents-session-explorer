@@ -24,6 +24,9 @@ const M_C1: &str = "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1";
 const M_E1: &str = "e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1";
 const M_G1: &str = "71717171-7171-4171-8171-717171717171";
 const M_G2: &str = "72727272-7272-4272-8272-727272727272";
+const M_D4A: &str = "d4d4d4d4-d4d4-4d4d-8d4d-d4d4d4d4d4d4";
+const M_D4B: &str = "e4e4e4e4-e4e4-4e4e-8e4e-e4e4e4e4e4e4";
+const M_D4C: &str = "f4f4f4f4-f4f4-4f4f-8f4f-f4f4f4f4f4f4";
 
 struct MotifFixtureTask {
     project: &'static str,
@@ -41,6 +44,8 @@ struct MotifFixtureTask {
 // Task 7 exists in two projects with the same call text so the fixture proves
 // that a colliding bare token stays ambiguous while `PROJECT|TASK` yields two
 // independent samples.
+// Token 4 repeats the collision with two attempts on one key and one on the
+// other, so a scoped pair gives two samples while support counts two keys.
 const MOTIF_FIXTURE_TASKS: &[MotifFixtureTask] = &[
     MotifFixtureTask {
         project: "MotifAlpha",
@@ -105,6 +110,30 @@ const MOTIF_FIXTURE_TASKS: &[MotifFixtureTask] = &[
         attempt: "g2",
         session_id: "motif-alt-child-7-g2",
         tools: &["s1", "s2", "s3", "s4"],
+    },
+    MotifFixtureTask {
+        project: "Four4Alpha",
+        dispatch_id: M_D4A,
+        task: "4",
+        attempt: "f1",
+        session_id: "motif-child-4-f1",
+        tools: &["p1", "p2", "p3", "p4"],
+    },
+    MotifFixtureTask {
+        project: "Four4Alpha",
+        dispatch_id: M_D4B,
+        task: "4",
+        attempt: "f2",
+        session_id: "motif-child-4-f2",
+        tools: &["p1", "p2", "p3", "p4"],
+    },
+    MotifFixtureTask {
+        project: "Four4Beta",
+        dispatch_id: M_D4C,
+        task: "4",
+        attempt: "f1",
+        session_id: "motif-alt-child-4-f1",
+        tools: &["p1", "p2", "p3", "p4"],
     },
 ];
 

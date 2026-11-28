@@ -143,7 +143,9 @@ const SHOW_USAGE: &str = "ase show <span:F:L:LEN|session:ID> [--role ROLE] [--or
      (--generation G pins the active publication; a stale locator exits 4)";
 const RESOLVE_USAGE: &str =
     "ase resolve <session:ID|span:F:L:LEN|task:TOKEN> [--explain] [--generation G] [--json]\n\
-     (--generation G pins the active publication; a stale locator exits 4)";
+     (--generation G pins the active publication; a stale locator exits 4)\n\
+     (task:TOKEN reconciles a bare token through naming, markers, delegation, path and dispatch signals;\n\
+     an assigned result is not motif membership and carries no motif sample guarantee)";
 const BENCH_SHOW_USAGE: &str = "ase bench-show [--n N] [--seed N] [--index FILE] [--json]";
 const BENCH_SEARCH_USAGE: &str =
     "ase bench-search [--n N] [--seed N] [--top-k N] [--source all|jsonl|zstd] [--probe TERM] [--json]";
@@ -159,8 +161,9 @@ const AUDIT_MARKERS_USAGE: &str = "ase audit markers [--index FILE] [--explain] 
 const MOTIF_USAGE: &str = "ase motif [PROJECT|TASK|TOKEN]... [--tau F] [--k-min N] [--k-max N]\n\
      [--max-gap N] [--band N] [--max-substitutions N]\n\
      [--null-permutations N] [--min-tasks N] [--explain] [--json]\n\
-     (PROJECT|TASK addresses one exact sampling key; a bare\n\
-     TOKEN stays ambiguous when two projects share it)";
+     (PROJECT|TASK filters the project before dispatch and admits only confirmed joins per attempt;\n\
+     a bare TOKEN stays ambiguous when two projects share it; naming, markers, paths and claims\n\
+     never create membership; quote 'PROJECT|4' in PowerShell)";
 const EXPORT_USAGE: &str = "ase export motif:<id> --out DIR --local-map FILE\n\
      (--address PROJECT|TASK ... | --addresses FILE)\n\
      [--index FILE] [--omp-root DIR] [--codex-root DIR] [--json]\n\

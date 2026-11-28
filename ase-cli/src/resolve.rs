@@ -593,6 +593,7 @@ fn cmd_resolve_task(
             "A conflicting layer returns ambiguous with every candidate, its support/refute evidence and reasons; insufficient evidence stays unresolved.",
             "A mention, an ambiguous marker, a literal path match or a parentSession declaration is a candidate/context only, never an assignment.",
             "Project is part of the key: the same token in different projects is reported separately and never merged. The child session named by a dispatch join is the executing child, not a suffix or worker-name match.",
+            "A resolver `assigned` decision is not motif membership: motif admits only dispatch-confirmed attempts of the addressed task key, so a naming-only assignment has no motif sample.",
             "Observed and derived evidence are labelled with their rule name/version; marker evidence is pinned to one generation, span, selector and block digest, and dispatch evidence carries both parent and child record spans.",
             "Metadata-only: no prose text is emitted, no postings content is returned and no model is called."
         ]

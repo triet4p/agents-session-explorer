@@ -21,7 +21,8 @@ struct ResolveFixtureFile {
 // Synthetic only. Each case isolates one reconciliation outcome:
 // consistent naming+marker, a cross-layer conflict, naming-only, a multi-ID
 // session, the same token in two projects, marker-only, mention-only and a
-// parentSession pair without a task grammar.
+// parentSession pair without a task grammar, plus a two-project token and a
+// naming-only assignment with no dispatch join.
 const RESOLVE_FIXTURE: &[ResolveFixtureFile] = &[
     ResolveFixtureFile {
         rel: "resolve/Proj10Task101Alpha1.jsonl",
@@ -100,6 +101,24 @@ const RESOLVE_FIXTURE: &[ResolveFixtureFile] = &[
         id: "syn-parent-child",
         parent: Some("syn-parent-root"),
         messages: &[("user", "delegated synthetic session")],
+    },
+    ResolveFixtureFile {
+        rel: "resolve/Four4AlphaTask4Role1.jsonl",
+        id: "fx-four-alpha-4",
+        parent: None,
+        messages: &[("user", "Implement task_id=4 for Four4Alpha.")],
+    },
+    ResolveFixtureFile {
+        rel: "resolve/Four4BetaTask4Role1.jsonl",
+        id: "fx-four-beta-4",
+        parent: None,
+        messages: &[("user", "Implement task_id=4 for Four4Beta.")],
+    },
+    ResolveFixtureFile {
+        rel: "resolve/Solo4NameTask411Role1.jsonl",
+        id: "fx-solo-411",
+        parent: None,
+        messages: &[("user", "Implement task_id=411 in the parser.")],
     },
 ];
 

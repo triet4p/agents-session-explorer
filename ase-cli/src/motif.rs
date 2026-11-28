@@ -216,6 +216,7 @@ pub fn run(args: &[String]) -> Result<()> {
 
     let explain = vec![
         "Membership is one native dispatch join per attempt; naming, path and parentSession candidates are never inputs. `PROJECT|TASK` filters the same dispatch validator before reconciliation, so one token in two projects stays two independent samples and a bare token stays ambiguous.".to_string(),
+        "A `resolve task:TOKEN` query also reads naming, marker, delegation and path signals; its `assigned` status alone never creates motif membership or a motif sample.".to_string(),
         "Support counts distinct task keys: repeated attempts and repeated occurrences of one task are one observation.".to_string(),
         "Duplicate sequence text is the SHA-256 of a sequence's reopened CallSig strings (rule motif-sequence-text / seq-text-v1). Dedupe is scoped to one task key, so distinct tasks keep their own samples; duplicate whole sequences are excluded from family/null/denominator counting but every occurrence stays reopenable evidence, and calls inside a sequence are never removed or reordered.".to_string(),
         "support_relaxed[g] allows at most g skipped calls between motif columns, so raising g never lowers support.".to_string(),
