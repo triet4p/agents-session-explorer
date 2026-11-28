@@ -4,7 +4,7 @@
 //! missing-result and conflicting-parent claim shapes plus sidecar handoffs.
 //! No resolver or motif membership is read or written here.
 
-use crate::cli_option::opt;
+use crate::cli_option::{opt, parse_opt};
 use crate::cli_output::outln;
 use ase_core::{err, Result};
 use serde_json::{json, Value};
@@ -69,6 +69,10 @@ pub fn run(args: &[String]) -> Result<()> {
     let out = PathBuf::from(
         opt(args, "--out").ok_or_else(|| err("fixture-adapter needs --out DIR"))?,
     );
+    let parents = parse_opt::<usize>(args, "--parents")?.unwrap_or(1);
+    if parents == 0 {
+        return Err(err("--parents needs at least 1 parent journal"));
+    }
     let project = out.join("omp").join("synthetic");
     let side = project.join("2026-01-01T00-00-00-000Z_syn");
     fs::create_dir_all(&side).map_err(|e| err(format!("create {}: {e}", side.display())))?;
@@ -125,6 +129,49 @@ pub fn run(args: &[String]) -> Result<()> {
         "Synthetic handoff\n- task_id: W2a\n- attempt_id: A1\n",
     )
     .map_err(|e| err(format!("write synthetic handoff: {e}")))?;
+    for n in 1..parents {
+        let label = format!("p{n:02}");
+        let extra = project.join(format!("2026-01-01T00-00-00-000Z_{label}.jsonl"));
+        let extra_abs = std::path::absolute(&extra)
+            .unwrap_or_else(|_| extra.clone())
+            .to_string_lossy()
+            .into_owned();
+        let child_name = format!("T{label}");
+        let lines = vec![
+            fixture_session(
+                &format!("syn-root-{label}"),
+                &format!("C:\\SYN\\{label}"),
+                None,
+            ),
+            fixture_task_call(
+                &label,
+                &[child_name.as_str()],
+                &format!("Target: W{label} attempt A1"),
+            ),
+            fixture_task_result(
+                &label,
+                &format!("Spawned agent `{child_name}` (job `{child_name}`)."),
+            ),
+        ];
+        write_jsonl(&extra, &lines)?;
+        write_jsonl(
+            &side.join(format!("{child_name}.jsonl")),
+            &vec![
+                fixture_session(
+                    &format!("syn-child-{label}"),
+                    &format!("C:\\SYN\\{label}"),
+                    Some(&extra_abs),
+                ),
+                json!({"type":"message","id":format!("{child_name}-u"),"parentId":null,
+                       "message":{"role":"user","content":[{"type":"text","text":"SYNTHETIC assignment"}]}}),
+            ],
+        )?;
+        fs::write(
+            side.join(format!("{child_name}.md")),
+            format!("Synthetic handoff\n- task_id: W{label}\n- attempt_id: A1\n"),
+        )
+        .map_err(|e| err(format!("write synthetic handoff: {e}")))?;
+    }
     outln!("wrote synthetic stock adapter fixture to {}", out.display());
     Ok(())
 }

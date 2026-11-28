@@ -297,7 +297,7 @@ runs, so rebuilding will not reproduce the published digest.
 | Navigation | `ase search --open-args` and `ase open --session-args` emit exact `open`/`show`/`resolve`/`work` flags for a verified block. Locators keep the logical `--index FILE` and pin the generation; a republished path makes old flags stop with `generation_mismatch` (exit `4`) rather than read a newer snapshot. Ambiguous, path-derived and unverified ids are refused. |
 | Identity | `ase resolve`, `ase audit naming`, `ase audit delegation`, `ase audit markers` reconcile naming grammar, delegation and `task_id=` markers with inspectable evidence. |
 | Work and analytics | `ase work project\|session\|reopen\|compare\|delta` projects turns/episodes; `ase analytics` reports stored cost, duration and clock unions. |
-| Patterns | `ase motif`, `ase shingle`, and `ase adapter omp-stock` produce advisory, evidence-pinned claims; adapter claims never write membership. |
+| Patterns | `ase motif`, `ase shingle`, and `ase adapter omp-stock` produce advisory, evidence-pinned claims; adapter `--limit` bounds parent journals, not claims, and adapter claims never write membership. |
 | Evidence exchange | `ase export motif:<id>`, `ase verify <bundle>`, `ase import verdicts`, `ase join skill-gap` move path-free evidence bundles without shipping source paths. |
 | Optional model layer | `ase judge`, `ase llm` run offline evaluation against a local runner or an explicitly configured API profile. |
 | Fixtures | `ase fixture`, `ase fixture-*` write synthetic journals for every layer; they contain no real transcript text. |
@@ -343,6 +343,30 @@ key is one support unit: three attempts on two keys give `support.exact = 2`,
 not 3. An assigned resolver token is not a promise of a motif sample, and a
 marker, path, suffix, prompt or adapter claim cannot create membership. The
 identity contract is in [DATA_CONTRACTS.md](docs/DATA_CONTRACTS.md#task).
+
+## Advisory adapter claims
+
+`ase adapter omp-stock` scans stock OMP journals and emits advisory `parent_child`,
+`repo` and `task` claims. They carry reopenable evidence but are never resolver
+assignments or motif membership, and they do not raise an evidence status.
+
+`--limit N` bounds the number of **parent journals** selected after sorting by
+path, not the number of files read, child journals or emitted claims. One parent
+can produce several claims, so `scan.parent_files` is the parent count while
+`claims` (also saved to `--out`) is a different number; `scan.files` includes
+children. The limit truncates only the parent list: no claim is capped and no
+report is truncated.
+
+```powershell
+ase fixture-adapter --out .\limit-fixture --parents 12
+ase index --layer all --omp-root .\limit-fixture\omp --codex-root .\empty --index .\limit-fixture\ase.index
+ase adapter omp-stock --all --limit 10 --index .\limit-fixture\ase.index --out .\limit-fixture\limited.json
+ase adapter omp-stock --reopen .\limit-fixture\limited.json --index .\limit-fixture\ase.index
+```
+
+This example is synthetic (`fixture-adapter`), not a user's corpus. Compare with
+an unlimited `--all` run: `scan.parent_files` changes while the claims stay
+advisory.
 
 ## How data is stored
 

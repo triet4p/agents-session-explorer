@@ -15,7 +15,8 @@ use crate::model::*;
 
 #[derive(Clone, Debug, Default)]
 pub struct Options {
-    /// Bound the number of root journals read. `None` scans all selected roots.
+    /// Bound the number of parent journals selected after path sort. This is
+    /// not a claim cap: one parent can emit several claims.
     pub max_parent_files: Option<usize>,
     /// Read a child handoff `.md` for independent task-token corroboration.
     pub read_sidecars: bool,

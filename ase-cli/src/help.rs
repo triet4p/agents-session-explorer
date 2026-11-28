@@ -42,6 +42,7 @@ const VALUE_FLAGS: &[&str] = &[
     "--k-min", "--k-max", "--max-gap", "--band", "--max-substitutions",
     "--null-permutations", "--min-tasks", "--address", "--addresses",
     "--local-map", "--verdicts", "--bundle", "--store", "--catalog", "--limit",
+    "--parents",
     "--reopen", "--claim", "--start", "--end", "--leaf", "--before", "--after",
     "--task", "--reference", "--report", "--scope", "--only-ordinal",
     "--workspace", "--slm-runner", "--slm-arg", "--slm-model-id",
@@ -176,7 +177,9 @@ const JOIN_USAGE: &str = "ase join skill-gap --store FILE --catalog FILE --bundl
 const ADAPTER_USAGE: &str = "ase adapter omp-stock (--session ID | --file N | --all) [--limit N]\n\
      [--no-sidecars] [--out CLAIMS.json] [--explain] [--json]\n\
      ase adapter omp-stock --reopen CLAIMS.json [--claim ID] [--json]\n\
-     (scan selects parent files; reopen reads saved advisory claims)";
+     (--limit N bounds parent files selected after path sort, not files read or claims;\n\
+     scan.parent_files is the parent count and one parent may emit many claims;\n\
+     claims stay advisory; reopen reads saved advisory claims)";
 const WORK_PROJECT_USAGE: &str =
     "ase work project [--index FILE] [--omp-root DIR] [--start ISO --end ISO]\n\
      [--out ROWS.jsonl] [--limit N] [--json]";
@@ -202,8 +205,9 @@ const FIXTURE_ANALYTICS_USAGE: &str =
     "ase fixture-analytics --out DIR\n\
      (nominal stored cost, duration vs clock union, coverage; no repricing and no stats.db dependency)";
 const FIXTURE_ADAPTER_USAGE: &str =
-    "ase fixture-adapter --out DIR\n\
-     (advisory claims only; resolver and motif membership unchanged)";
+    "ase fixture-adapter --out DIR [--parents N]\n\
+     (--parents adds N synthetic parent journals with matching children; default 1;\n\
+     advisory claims only; resolver and motif membership unchanged)";
 const FIXTURE_MOTIF_USAGE: &str = "ase fixture-motif --out DIR";
 const JUDGE_RUN_USAGE: &str = "ase judge run --root DIR --manifest FILE --units FILE --private FILE\n\
      --store FILE [--scope primary|unknown|all] [--only-ordinal N]... [--limit N]\n\

@@ -156,6 +156,8 @@ fn usage() {
          ase adapter omp-stock (--session ID | --file N | --all) [--limit N]\n\
                      [--no-sidecars] [--out CLAIMS.json] [--explain] [--json]\n\
          ase adapter omp-stock --reopen CLAIMS.json [--claim ID] [--json]\n\
+                     (--limit N bounds parent files after path sort; scan.parent_files is\n\
+                     the parent count, not the claim count; claims stay advisory)\n\
          ase work project [--index FILE] [--omp-root DIR] [--start ISO --end ISO]\n\
                      [--out ROWS.jsonl] [--limit N] [--json]\n\
          ase work session (--session ID | --file N) [--leaf ENTRY_ID]\n\
@@ -177,8 +179,9 @@ fn usage() {
          ase fixture-analytics --out DIR\n\
                      (nominal stored cost, duration vs clock union, coverage;\n\
                      no repricing and no stats.db dependency)\n\
-         ase fixture-adapter --out DIR\n\
-                     (advisory claims only; resolver and motif membership unchanged)\n\
+         ase fixture-adapter --out DIR [--parents N]\n\
+                     (N synthetic parent journals, default 1; advisory claims only;\n\
+                     resolver and motif membership unchanged)\n\
          ase fixture-motif --out DIR\n\
          ase judge run --root DIR --manifest FILE --units FILE --private FILE\n\
                      --store FILE [--scope primary|unknown|all] [--only-ordinal N]...\n\
