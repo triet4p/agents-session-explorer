@@ -36,6 +36,7 @@ mod export_query;
 mod export_selection;
 mod fixture;
 mod fixture_dispatch;
+mod help;
 mod import;
 mod index;
 mod join;
@@ -60,7 +61,10 @@ mod work_fixture;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.is_empty() || args[0] == "--help" || args[0] == "-h" {
+    if help::try_print(&args) {
+        return;
+    }
+    if args.is_empty() {
         usage();
         return;
     }

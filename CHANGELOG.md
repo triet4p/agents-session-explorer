@@ -8,6 +8,8 @@
 
 - Fixed `ase open --session-args` locators to keep the logical `--index FILE` and pin the generation explicitly in their `show`, `resolve` and `work session` flag arrays. Pinned commands now stop with `generation_mismatch` (exit `4`) before reading raw when the publication moved to another generation; a missing or unusable publication is refused before raw, and saved flag arrays that name an address directly still open only that address. Search again for a fresh locator instead of editing an old pin.
 
+- Fixed `--help` and `-h` across the CLI command tree: every top-level command, group and leaf now prints usage for its own path to stdout with empty stderr and exit `0`, without a positional argument, index, config, credential prompt, output file or network call. Help is recognized only in flag positions, so a value that resembles help and unknown command names keep their normal errors.
+
 ## [0.8.0] - 2026-11-28
 
 ### Added

@@ -294,6 +294,16 @@ runs, so rebuilding will not reproduce the published digest.
 Run any subcommand with `--help` for its exact flags, for example
 `ase work --help` or `ase judge --help`.
 
+`--help` and `-h` are read-only at every level: the root command, each top-level
+command, and every group and leaf (including `audit`, `adapter`, `work`,
+`analytics`, `import verdicts`, `join skill-gap`, `judge`, `llm` and the
+`fixture-*` / `bench-*` commands) print that command's usage to stdout with
+empty stderr and exit `0`. They need no positional argument and open no index,
+config, credential store or network connection, and never prompt or write an
+output file. Help is recognized only where a flag is expected: a value that
+looks like help (for example `--event --help`) is still parsed as a value and
+keeps its normal error, and an unknown command or leaf still exits `2`.
+
 ## How data is stored
 
 - JSONL spans are addressed as `(file, off, len)` in raw file bytes. A

@@ -34,7 +34,7 @@ pub fn run(args: &[String]) -> Result<()> {
     }
 }
 
-fn llm_usage() {
+pub(crate) fn llm_usage() {
     println!(
         "ase llm config [--json] [--profile NAME]\n\
          ase llm config set --profile NAME --provider NAME\n\

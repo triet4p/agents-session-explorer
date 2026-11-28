@@ -21,7 +21,7 @@ use crate::show::unique_session;
 
 // -------------------------------------------------------- runtime analytics
 
-fn analytics_usage() {
+pub(crate) fn analytics_usage() {
     println!(
         "ase analytics project [--index FILE] [--omp-root DIR] [--start ISO --end ISO]\n\
          [--out ROWS.jsonl] [--report REPORT.json] [--limit N] [--json]\n\

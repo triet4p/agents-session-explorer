@@ -34,7 +34,7 @@ fn open_usage_text() -> &'static str {
      and --session-args. No prose, signature or journal path is printed."
 }
 
-fn open_usage() {
+pub(crate) fn open_usage() {
     println!("{}", open_usage_text());
 }
 
@@ -111,7 +111,7 @@ pub(crate) fn hash_bytes(hex: &str) -> Option<[u8; 8]> {
 }
 
 pub fn run(args: &[String]) -> Result<()> {
-    if has(args, "--help") || has(args, "-h") {
+    if crate::help::has_help(args) {
         open_usage();
         return Ok(());
     }

@@ -35,7 +35,7 @@ pub fn run(args: &[String]) -> Result<()> {
     }
 }
 
-fn usage() {
+pub(crate) fn usage() {
     println!(
         "ase judge run --root DIR --manifest FILE --units FILE --private FILE\n\
          \x20           --store FILE [--scope primary|unknown|all] [--only-ordinal N]...\n\

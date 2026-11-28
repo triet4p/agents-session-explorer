@@ -156,7 +156,7 @@ fn validate_address_corpus(idx: &Index, corpus: &DecodedCorpus) -> Result<()> {
 }
 
 pub fn run(args: &[String]) -> Result<()> {
-    if has(args, "--help") || has(args, "-h") {
+    if crate::help::has_help(args) {
         index_usage();
         return Ok(());
     }
@@ -429,7 +429,7 @@ fn print_index_json(
     }
 }
 
-fn index_usage() {
+pub(crate) fn index_usage() {
     println!(
         "ase index [--layer address|postings|all] [--omp-root DIR] [--codex-root DIR]\n\
          [--index FILE] [--fail-before-publish] [--json]"

@@ -24,7 +24,7 @@ fn conflicting_text_flag(args: &[String]) -> Option<&'static str> {
         .find(|flag| has(args, flag))
 }
 
-fn search_usage() {
+pub(crate) fn search_usage() {
     println!(
         "ase search <QUERY> [--index FILE] [--phrase] [--top-k N] [--text]\n\
          [--explain] [--open-args] [--json]\n\
@@ -100,7 +100,7 @@ fn open_args(event: u32, selector: &str, generation: &str, index: &str) -> Value
 }
 
 pub fn run(args: &[String]) -> Result<()> {
-    if has(args, "--help") || has(args, "-h") {
+    if crate::help::has_help(args) {
         search_usage();
         return Ok(());
     }

@@ -23,7 +23,7 @@ use crate::cli_output::emit;
 use crate::index::{check_generation_pin, index_path};
 use crate::show::unique_session;
 
-fn work_usage() {
+pub(crate) fn work_usage() {
     println!(
         "ase work project [--index FILE] [--omp-root DIR] [--start ISO --end ISO]\n\
          [--out ROWS.jsonl] [--limit N] [--json]\n\
