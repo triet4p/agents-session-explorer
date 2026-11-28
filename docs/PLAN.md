@@ -4,6 +4,10 @@
 
 ## Sprint hiện tại
 
+**[Sprint 13 — CLI nhất quán sau phản hồi v0.8.0](sprint-plans/sprint-13.md) — đã lập kế hoạch, chưa triển khai.** Thống nhất đường dẫn chỉ mục và cách ghim generation; làm cho help và stdout pipe hoạt động nhất quán; làm rõ định danh resolver/motif, đơn vị giới hạn adapter và đầu vào export. Mốc đầu là tương thích chỉ mục/locator; tiếp theo là nghiệm thu CLI và tài liệu sản phẩm; cuối cùng là kiểm ứng viên Windows x64 từ snapshot sạch. Chỉ dùng fixture và máy build, không thử lại với người dùng hay truy cập dữ liệu phiên thật, không thêm gate hiệu năng. Version và quyền phát hành chưa chốt.
+
+## Sprint 12 đã phát hành
+
 **[Sprint 12 — Từ chỉ mục đến mở lại bằng chứng hằng ngày](sprint-plans/sprint-12.md) — hoàn tất và đã phát hành `v0.8.0`.** Đã thêm chế độ văn bản tự chọn cho search/open, giữ mặc định JSON và hợp đồng xác minh; hướng dẫn đã được kiểm trên PowerShell 5.1 và 7. Asset Windows x64 `ase-0.8.0-windows-x64.zip` (unsigned, kèm `LICENSE` MIT, `SHA256SUMS.txt`) đã phát hành trên bằng chứng fixture/máy build; không dùng dữ liệu phiên thật.
 
 ## Đánh giá Sprint 11
